@@ -1,6 +1,5 @@
 module Data.Heap.WeightBiasedLeftist
     (   WeightBiasedLeftistHeap
-    ,   leftistProperty
     ) where
 
 import Data.Heap

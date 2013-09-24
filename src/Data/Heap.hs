@@ -1,9 +1,7 @@
 module Data.Heap 
     (   Heap(..)
     ,   insert
-    ,   deleteMin
     ,   minOfEmptyHeapIsNothing
-    ,   deleteMinOfEmptyTreeGivesEmptyTree
     ,   fromList
     ,   toList
     ) where
@@ -27,22 +25,16 @@ class Heap h where
     empty :: h a
     isEmpty :: h a -> Bool
 
-    leftTree :: h a -> Maybe (h a)
-    rightTree :: h a -> Maybe (h a)
-
     merge :: Ord a => h a -> h a -> h a
 
     findMin :: Ord a => h a -> Maybe a
+    deleteMin :: Ord a => h a -> h a
 
 -- He specifies the following properties for his Heap functions:
 
 -- | The minimum of an empty heap is nothing (I added this)
 minOfEmptyHeapIsNothing :: (Heap h, Ord a) => h a -> Bool
 minOfEmptyHeapIsNothing emptyHeap = isNothing $ findMin emptyHeap
-
--- | deleting the minimum of an empty tree results in the empty tree...
-deleteMinOfEmptyTreeGivesEmptyTree :: (Eq (h a), Heap h, Ord a) => h a -> Bool
-deleteMinOfEmptyTreeGivesEmptyTree emptyHeap = deleteMin emptyHeap == emptyHeap
 
 -- The following function are derived from the type class methods
 
@@ -51,17 +43,6 @@ deleteMinOfEmptyTreeGivesEmptyTree emptyHeap = deleteMin emptyHeap == emptyHeap
 -- same time complexity as merge
 insert :: (Ord a, Heap h) => a-> h a -> h a
 insert x = merge $ singletonHeap x
-
--- | delete the minimum,
--- Same time complexity as merge
-deleteMin :: (Ord a, Heap h) => h a -> h a
-deleteMin h = fromMaybe h $ maybeDeleteMin h
-    where
-        maybeDeleteMin :: (Ord a, Heap h) => h a -> Maybe (h a)
-        maybeDeleteMin heap = do
-            a <- leftTree heap
-            b <- rightTree heap
-            return $ merge a b
 
 -- | Exercise 3.3 : Implement a function fromList that produces a
 -- LeftistHeap from an unordered list of elements by first
