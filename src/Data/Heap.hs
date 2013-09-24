@@ -4,15 +4,15 @@ module Data.Heap
     ,   deleteMinOfEmptyTreeGivesEmptyTree
     ) where
 
+import Data.OrderedTree
+
 import Data.Maybe
+
 
 -- | Chapter 3 of C.Okasaki's "Purely Functional Data Structures" deals with some Heaps/Priority Queues
 -- he defines the following typeclass
 --
 class Heap h where
-    empty :: h a
-    isEmpty :: h a -> Bool
-
     insert :: Ord a => a -> h a -> h a
     merge :: Ord a => h a -> h a -> h a
 
