@@ -1,10 +1,8 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Data.LeftistHeap
+module Data.Heap.Leftist
     (   LeftistHeap
     ,   leftistProperty
     ,   rank
     ,   singletonHeap
-    ,   fromList
     ) where
 
 import Control.Applicative hiding (empty)
@@ -12,7 +10,6 @@ import Data.Function
 import Data.Maybe
 
 import Data.Heap
-import Data.OrderedTree
 
 -- $setup
 -- >>> import Control.Applicative
@@ -71,7 +68,7 @@ rightTree' (Tree _ _ _ b)   = Just b
 -- >>> rank EmptyHeap
 -- 0
 --
--- >>> rank (fromList [5,7,3,8,2,3,9,10])
+-- >>> rank (fromList [5,7,3,8,2,3,9,10] :: LeftistHeap Int)
 -- 2
 --
 rank' :: LeftistHeap a -> Int
@@ -92,7 +89,7 @@ rank'' (Tree _ _ _ rightHeap)    = rank'' rightHeap + 1
 -- for the LeftistHeap.
 -- It takes the element, and two leftist heaps,
 -- and constructs the node which contains the element
--- and the two given heaps as children, such that the leftist 
+-- and the two given heaps as children, such that the leftist
 -- property is satisfied.
 -- O(1)
 --
@@ -104,8 +101,8 @@ rank'' (Tree _ _ _ rightHeap)    = rank'' rightHeap + 1
 -- >>> makeTree 3 (makeTree 1 EmptyHeap EmptyHeap) EmptyHeap
 -- Tree 1 3 (Tree 1 1 EmptyHeap EmptyHeap) EmptyHeap
 --
-makeTree' :: a -> LeftistHeap a -> LeftistHeap a -> LeftistHeap a
-makeTree' x a b
+makeTree :: a -> LeftistHeap a -> LeftistHeap a -> LeftistHeap a
+makeTree x a b
     | rank a < rank b = Tree (rank a + 1) x b a
     | otherwise       = Tree (rank b + 1) x a b
 
@@ -118,20 +115,11 @@ isEmpty' :: LeftistHeap a -> Bool
 isEmpty' EmptyHeap  = True
 isEmpty' _          = False
 
-instance OrderedTree LeftistHeap where
-    rank = rank'
-    empty = empty'
-    isEmpty = isEmpty'
-    getElement = getElement'
-    leftTree = leftTree'
-    rightTree = rightTree'
-    makeTree = makeTree'
-
 -- | verifies the leftist property...
-leftistProperty :: (Heap h, OrderedTree h) => h a -> Bool
+leftistProperty :: (Heap h) => h a -> Bool
 leftistProperty heap = fromMaybe True $ maybeLeftistProperty heap
     where
-        maybeLeftistProperty :: (Heap h, OrderedTree h) => h a -> Maybe Bool
+        maybeLeftistProperty :: (Heap h) => h a -> Maybe Bool
         maybeLeftistProperty heap' = do
             leftHeap <- leftTree heap'
             rightHeap <- rightTree heap'
@@ -145,69 +133,54 @@ leftistProperty heap = fromMaybe True $ maybeLeftistProperty heap
 -- property (which is what makeTree does)
 -- Its O(log n)
 --
-merge' :: (Ord a, OrderedTree h) => h a -> h a -> h a
-merge' w z = fromMaybe (if isEmpty z then w else z) $ maybeMerge w z
-    where
-        maybeMerge :: (Ord a, OrderedTree h) => h a -> h a -> Maybe (h a)
-        maybeMerge w' z' = do
-            x <- getElement w'
-            y <- getElement z'
-            a <- leftTree w'
-            b <- rightTree w'
-            c <- leftTree z'
-            d <- rightTree z'
-            return $ if x > y
-            then
-                makeTree y c (merge' w' d)
-            else
-                makeTree x a (merge' b z')
+-- merge' is not associative under the strict equality,
+-- so it cannot serve as a suitable mappend
+-- for a Monoid Instance unless an Eq instance is provided
+-- that defines two leftist heaps to be equivalent if toList
+-- on the operands results on the same list.
+--
+-- i.e (==) = (==) `on` toList
+--
+merge' :: (Ord a) => LeftistHeap a -> LeftistHeap a -> LeftistHeap a
+merge' EmptyHeap h = h
+merge' h EmptyHeap = h
+merge' w@(Tree _ x a b) z@(Tree _ y c d)
+    | x > y     = makeTree y c (merge' w d)
+    | otherwise = makeTree x a (merge' b z)
 
 -- | create the singleton heap from a given element:
 --
 -- The min of the singleton heap must be the element we put in.
--- prop> (\x -> findMin (singletonHeap x) == (Just x)) (x :: Int)
+-- prop> (\x -> findMin (singletonHeap x :: LeftistHeap Int) == (Just x)) (x :: Int)
 --
 -- rank of any singleton must be 1.
--- prop> (\x -> rank (singletonHeap x) == 1) (x :: Int)
+-- prop> (\x -> rank (singletonHeap x :: LeftistHeap Int) == 1) (x :: Int)
 --
 -- singleton must not be empty..
--- prop> (\x -> not (isEmpty (singletonHeap x))) (x :: Int)
+-- prop> (\x -> not (isEmpty (singletonHeap x :: LeftistHeap Int))) (x :: Int)
 --
 -- however, if you delete the min then it should become empty...
--- prop> (\x -> isEmpty (deleteMin (singletonHeap x))) (x :: Int)
+-- prop> (\x -> isEmpty (deleteMin (singletonHeap x :: LeftistHeap Int))) (x :: Int)
 --
-singletonHeap :: (OrderedTree h) => a -> h a
-singletonHeap x = makeTree x empty empty
-
--- | insert an elt by merging the heap with the singleton heap
--- of the new element.
--- O(log n)
-insert' :: (Ord a, OrderedTree h) => a-> h a -> h a
-insert' x = merge' $ singletonHeap x
+singletonHeap' :: a -> LeftistHeap a
+singletonHeap' x = makeTree x empty empty
 
 -- | find the minimum of the heap
 -- O(1) time
-findMin' :: (OrderedTree h) => h a -> Maybe a
-findMin' = getElement
+findMin' :: LeftistHeap a -> Maybe a
+findMin' = getElement'
 
--- | delete the minimum,
--- O(log n) time
-deleteMin' :: (Ord a, OrderedTree h) => h a -> h a
-deleteMin' h = fromMaybe h $ maybeDeleteMin h
-    where
-        maybeDeleteMin :: (Ord a, OrderedTree h) => h a -> Maybe (h a)
-        maybeDeleteMin heap = do
-            a <- leftTree heap
-            b <- rightTree heap
-            return $ merge' a b
+instance Heap LeftistHeap where
+    rank = rank'
 
-newtype OrderedHeap h a = OrderedHeap { fromOrderedHeap :: h a } deriving (Show, Eq, OrderedTree)
+    singletonHeap = singletonHeap'
+    empty = empty'
+    isEmpty = isEmpty'
+    leftTree = leftTree'
+    rightTree = rightTree'
+    merge = merge'
 
-instance (OrderedTree h) => Heap (OrderedHeap h) where
-    insert x = OrderedHeap . insert' x . fromOrderedHeap
-    merge w z = OrderedHeap $ (merge' `on` fromOrderedHeap) w z
-    findMin = findMin' . fromOrderedHeap
-    deleteMin = OrderedHeap <$> (deleteMin' . fromOrderedHeap)
+    findMin = findMin'
 
 -- Exercises
 
@@ -224,40 +197,6 @@ x `addTo` EmptyHeap = singletonHeap x
 x `addTo` h@(Tree _ y a b)
     | x > y     = makeTree y a (x `addTo` b)
     | otherwise = makeTree x EmptyHeap h
-
--- | Exercise 3.3 : Implement a function fromList that produces a
--- LeftistHeap from an unordered list of elements by first
--- converting each element into a singleton heap and then merging the heaps
--- until only one remains, dont use foldl/foldr and instead merge
--- the heaps in ceil(log n) passes.  Show that fromList takes O(n) time..
---
--- prop> (\xs -> leftistProperty (fromList xs)) (xs :: [Int])
---
--- >>> fromList [14,5,7,3,2,7]
--- Tree 2 2 (Tree 1 7 EmptyHeap EmptyHeap) (Tree 1 3 (Tree 2 5 (Tree 1 7 EmptyHeap EmptyHeap) (Tree 1 14 EmptyHeap EmptyHeap)) EmptyHeap)
---
--- >>> fromList []
--- EmptyHeap
---
-fromList :: (Ord a, Heap h) => [a] -> h a
-fromList [] = empty
-fromList (x:[]) = singletonHeap x
-fromList xs = (merge `on` fromList) firstHalf secondHalf
-    where
-        (firstHalf, secondHalf) = (length xs `quot` 2)`splitAt` xs
-
--- | converts a LeftistHeap into a sorted list
---
--- >>> (toList .fromList) [14,5,7,3,2,7]
--- [2,3,5,7,7,14]
---
--- >>> (toList .fromList) [1..10]
--- [1,2,3,4,5,6,7,8,9,10]
---
-toList :: (Ord a, Heap h) => h a -> [a]
-toList heap = case findMin heap of
-    Nothing -> []
-    Just x -> x : toList (deleteMin heap)
 
 -- | Exercise 3.4
 -- A **weight biased** leftist heap is one where the rank is instead defined by the number of elements contained in the tree.
