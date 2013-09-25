@@ -9,6 +9,7 @@ module Data.Heap.Leftist
     ,   isEmptyLeftist
     ,   singletonLeftistHeap
     ,   mergeLeftist
+    ,   addTo
     ) where
 
 import Data.Function (on)
@@ -19,8 +20,8 @@ import Data.Maybe (fromMaybe)
 -- >>> import Data.Heap.Leftist.HeightBiased
 -- >>> import Control.Applicative
 -- >>> import Test.QuickCheck
--- >>> instance Arbitrary (LeftistHeap Int) where arbitrary = (toLeftist . (fromList :: [Int] -> HBLHeap Int)) <$> arbitrary
--- >>> instance Arbitrary (HBLHeap Int) where arbitrary = (fromList :: [Int] -> HBLHeap Int) <$> arbitrary
+-- >>> newtype TestHeap = TestHeap (HBLHeap Int)
+-- >>> instance Arbitrary TestHeap where arbitrary = (TestHeap . fromList) <$> arbitrary
 
 -- | from Chapter 3 of "Purely Functional Data Structures" by Chris Okasaki
 -- "Leftist Heaps are heap ordered binary trees that satisfy the leftist property:
@@ -45,11 +46,16 @@ data LeftistHeap a =
 class Leftist h where
     toLeftist :: h a -> LeftistHeap a
     fromLeftist :: LeftistHeap a -> h a
-    combineTrees :: a -> h a -> h a -> h a
+    combineTrees :: Eq a => a -> h a -> h a -> h a
+
+instance Eq a => Ord (LeftistHeap a) where
+    compare = compare `on` leftistRank
+
+-- Properties
 
 -- | verifies the leftist property...
 leftistProperty :: (Leftist h) => h a -> Bool
-leftistProperty heap = 
+leftistProperty heap =
     case toLeftist heap of
         EmptyHeap -> True
         Tree _ _ leftHeap rightHeap -> leftistRank leftHeap >= leftistRank rightHeap
@@ -60,7 +66,7 @@ leftistRank EmptyHeap = 0
 leftistRank (Tree r _ _ _) = r
 
 -- | retrieves the topmost element of the heap
--- prop> (\x -> findLeftistMin (toLeftist fromList [x]) == Just x) (x :: Int)
+-- prop> (\x -> findLeftistMin (toLeftist (fromList [x] :: HBLHeap Int)) == Just x) (x :: Int)
 --
 -- >>> findLeftistMin EmptyHeap
 -- Nothing
@@ -117,7 +123,7 @@ deleteLeftistMin h =
 -- i.e (==) = (==) `on` toList
 --
 mergeLeftist :: (Ord a, Leftist h) => h a -> h a -> h a
-mergeLeftist w' z' = 
+mergeLeftist w' z' =
     case (toLeftist w', toLeftist z') of
         (EmptyHeap, _) -> z'
         (_, EmptyHeap) -> w'
@@ -126,3 +132,18 @@ mergeLeftist w' z' =
                 combineTrees y (fromLeftist c) (mergeLeftist w' (fromLeftist d))
             else
                 combineTrees x (fromLeftist a) (mergeLeftist (fromLeftist b) z')
+
+-- | Exercise 3.2: define insert directly rather than through a call
+-- to merge.
+--
+addTo :: (Ord a, Leftist f) => a -> f a -> f a
+x `addTo` h =
+    case toLeftist h of
+        EmptyHeap       -> fromLeftist $ singletonLeftistHeap x
+        (Tree _ y a b)  ->
+            if x > y then
+                combineTrees y (fromLeftist a) (x `addTo` fromLeftist b)
+            else
+                combineTrees x (fromLeftist EmptyHeap) h
+
+
