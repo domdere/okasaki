@@ -38,7 +38,10 @@ library
 
     hs-source-dirs:     src
 
-    exposed-modules:
+    exposed-modules:    Data.Heap
+                        , Data.Heap.Leftist
+                        , Data.Heap.Leftist.HeightBiased
+                        , Data.Heap.Leftist.WeightBiased
 
 executable              purelyFunc
     default-language:   Haskell2010

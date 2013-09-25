@@ -15,8 +15,8 @@ Chapter 3 Deals with the following Data Structures (with the relevant modules li
         -   Height Biased ( [**Data.Heap.Leftist.HeightBiased**](./src/Data/Heap/HeightBiased.hs "Data.Heap.Leftist.HeightBiased") )
         -   Weight Biased ( [**Data.Heap.Leftist.WeightBiased**](./src/Data/Heap/WeightBiased.hs "Data.Heap.Leftist.WeightBiased") )
     -   Binomial Trees/Heaps
-        -   Binomial Trees
-        -   Binomial Heaps
+        -   Binomial Trees ( [**Data.Heap.Binomial.Tree**](./src/Data/Heap/Binomial/Tree.hs "Data.Heap.Binomial.Tree") )
+        -   Binomial Heaps ( [**Data.Heap.Binomial.Heap**](./src/Data/Heap/Binomial/Heap.hs "Data.Heap.Binomial.Heap") )
 
 ## Building the project
 
