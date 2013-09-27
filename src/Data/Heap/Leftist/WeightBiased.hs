@@ -52,14 +52,14 @@ makeTree x (WBLHeap a) (WBLHeap b)
             pluus = (+) `on` leftistRank
 
 instance Leftist WBLHeap where
+    rank = leftistRank . toLeftist
+
     toLeftist (WBLHeap x) = x
     fromLeftist = WBLHeap
 
     combineTrees = makeTree
 
 instance Heap WBLHeap where
-    rank = leftistRank . toLeftist
-
     singletonHeap = fromLeftist  . singletonLeftistHeap
     empty = fromLeftist EmptyHeap
     isEmpty = isEmptyLeftist . toLeftist

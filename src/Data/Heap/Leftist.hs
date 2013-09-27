@@ -44,6 +44,7 @@ data LeftistHeap a =
 -- and define how to fuse leftist trees together
 -- at a node (and pre calc the rank)
 class Leftist h where
+    rank :: h a -> Int
     toLeftist :: h a -> LeftistHeap a
     fromLeftist :: LeftistHeap a -> h a
     combineTrees :: Eq a => a -> h a -> h a -> h a

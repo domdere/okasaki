@@ -21,8 +21,6 @@ import Data.Maybe
 -- he defines the following typeclass
 --
 class Heap h where
-    rank :: h a -> Int
-
     singletonHeap :: a -> h a
     empty :: h a
     isEmpty :: h a -> Bool

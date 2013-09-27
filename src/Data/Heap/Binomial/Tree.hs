@@ -18,13 +18,13 @@ import Data.Function
 -- Note that the children are to be stored in order of decreasing rank and
 -- elements are to be stored in heap order.
 --
-data BinomialTree a = BinomialTree a [BinomialTree a] deriving (Show, Eq)
+data BinomialTree a = BinomialTree Int a [BinomialTree a] deriving (Show, Eq)
 
 -- | the tree rank is defined as above, hence it can be calculated
 -- from the length of the list of children.
 -- runs in O(r) time
 treeRank :: BinomialTree a -> Int
-treeRank (BinomialTree _ xs) = length xs
+treeRank (BinomialTree rank _ _) = rank
 
 -- | A singleton node/tree
 --
@@ -40,22 +40,22 @@ treeRank (BinomialTree _ xs) = length xs
 -- prop> (\x -> decreasingRank (singletonTree x)) (x :: Int)
 --
 singletonTree :: a -> BinomialTree a
-singletonTree x = BinomialTree x []
+singletonTree x = BinomialTree 0 x []
 
 -- | the link operation for two trees, only returns a result
 -- when the two trees have the same rank, returns Nothing otherwise..
 --
 -- >>> link (singletonTree 3) (singletonTree 4)
--- Just (BinomialTree 3 [BinomialTree 4 []])
+-- Just (BinomialTree 1 3 [BinomialTree 0 4 []])
 --
 -- >>> link (singletonTree 5) (singletonTree 2)
--- Just (BinomialTree 2 [BinomialTree 5 []])
+-- Just (BinomialTree 1 2 [BinomialTree 0 5 []])
 --
 link :: (Ord a) => BinomialTree a -> BinomialTree a -> Maybe (BinomialTree a)
-link w@(BinomialTree x ws) z@(BinomialTree y zs)
+link w@(BinomialTree rw x ws) z@(BinomialTree rz y zs)
     | ((/=) `on` treeRank) w z  = Nothing
-    | x < y                     = Just $ BinomialTree x (z:ws)
-    | otherwise                 = Just $ BinomialTree y (w:zs)
+    | x < y                     = Just $ BinomialTree (rw + 1) x (z:ws)
+    | otherwise                 = Just $ BinomialTree (rz + 1) y (w:zs)
 
 -- Invariants
 
@@ -63,7 +63,7 @@ link w@(BinomialTree x ws) z@(BinomialTree y zs)
 -- decreasing rank, hence this property becomes an invariant...
 --
 decreasingRank :: BinomialTree a -> Bool
-decreasingRank (BinomialTree _ children) =
+decreasingRank (BinomialTree _ _ children) =
     isStrictlyDecreasing $ treeRank `fmap` children
 
 -- | elements are to be stored in heap order..
@@ -115,5 +115,5 @@ isMonotonicallyIncreasing (x:y:xs)  = (x <= y) && isMonotonicallyIncreasing (y:x
 -- | pulls outs the elements of the binomial tree:
 --
 toList' :: BinomialTree a -> [a]
-toList' (BinomialTree x []) = [x]
-toList' (BinomialTree x ts) = x : foldr (\t xs -> toList' t ++ xs) [] ts
+toList' (BinomialTree _ x []) = [x]
+toList' (BinomialTree _ x ts) = x : foldr (\t xs -> toList' t ++ xs) [] ts

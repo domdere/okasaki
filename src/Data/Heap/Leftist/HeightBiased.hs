@@ -46,14 +46,14 @@ makeTree x (HBLHeap a) (HBLHeap b)
     | otherwise = fromLeftist $ Tree (leftistRank b + 1) x a b
 
 instance Leftist HBLHeap where
+    rank = leftistRank . toLeftist
+
     toLeftist (HBLHeap x) = x
     fromLeftist = HBLHeap
 
     combineTrees = makeTree
 
 instance Heap HBLHeap where
-    rank = leftistRank . toLeftist
-
     singletonHeap = fromLeftist  . singletonLeftistHeap
     empty = fromLeftist EmptyHeap
     isEmpty = isEmptyLeftist . toLeftist
