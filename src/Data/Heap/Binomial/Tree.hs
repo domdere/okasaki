@@ -1,6 +1,11 @@
 module Data.Heap.Binomial.Tree
-    (   BinomialTree
+    (   BinomialTree(..)
+    ,   link
     ,   treeRank
+    ,   singletonTree
+    ,   decreasingRank
+    ,   eltsInHeapOrder
+    ,   isStrictlyDecreasing
     ) where
 
 import Data.Function
@@ -42,20 +47,22 @@ treeRank (BinomialTree rank _ _) = rank
 singletonTree :: a -> BinomialTree a
 singletonTree x = BinomialTree 0 x []
 
--- | the link operation for two trees, only returns a result
--- when the two trees have the same rank, returns Nothing otherwise..
+-- | links two trees with the elements in heap order
+-- this operation will work when the ranks of the
+-- operands are not the same however (as the operation still
+-- "makes sense"), in creating Binomial Heaps with this operation, 
+-- only trees of the same rank get linked.
 --
 -- >>> link (singletonTree 3) (singletonTree 4)
--- Just (BinomialTree 1 3 [BinomialTree 0 4 []])
+-- BinomialTree 1 3 [BinomialTree 0 4 []]
 --
 -- >>> link (singletonTree 5) (singletonTree 2)
--- Just (BinomialTree 1 2 [BinomialTree 0 5 []])
+-- BinomialTree 1 2 [BinomialTree 0 5 []]
 --
-link :: (Ord a) => BinomialTree a -> BinomialTree a -> Maybe (BinomialTree a)
+link :: (Ord a) => BinomialTree a -> BinomialTree a -> BinomialTree a
 link w@(BinomialTree rw x ws) z@(BinomialTree rz y zs)
-    | ((/=) `on` treeRank) w z  = Nothing
-    | x < y                     = Just $ BinomialTree (rw + 1) x (z:ws)
-    | otherwise                 = Just $ BinomialTree (rz + 1) y (w:zs)
+    | x < y                     = BinomialTree (rw + 1) x (z:ws)
+    | otherwise                 = BinomialTree (rz + 1) y (w:zs)
 
 -- Invariants
 
@@ -70,6 +77,11 @@ decreasingRank (BinomialTree _ _ children) =
 --
 eltsInHeapOrder :: (Ord a) => BinomialTree a -> Bool
 eltsInHeapOrder t = isMonotonicallyIncreasing $ toList' t
+
+-- Instances
+
+instance (Eq a) => Ord (BinomialTree a) where
+    compare = compare `on` treeRank
 
 -- Helpers
 
