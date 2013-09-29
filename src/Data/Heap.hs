@@ -2,6 +2,7 @@ module Data.Heap
     (   Heap(..)
     ,   insert
     ,   minOfEmptyHeapIsNothing
+    ,   heapOrder
     ,   fromList
     ,   toList
     ) where
@@ -29,6 +30,16 @@ class Heap h where
 
     findMin :: Ord a => h a -> Maybe a
     deleteMin :: Ord a => h a -> h a
+
+-- | Heap Invariants
+
+-- | The most obvious heap invariant is heap order
+heapOrder :: (Heap h, Ord a) => h a -> Bool
+heapOrder h = isSorted $ toList h
+    where
+        isSorted []         = True
+        isSorted (_:[])     = True
+        isSorted (x:y:xs)   = x <= y && isSorted (y:xs)
 
 -- He specifies the following properties for his Heap functions:
 
