@@ -103,13 +103,32 @@ w@(BinomialHeap (a:as)) `merge'` z@(BinomialHeap (b:bs))
 -- >>> findMin' (singletonHeap' 4)
 -- Just 4
 --
+-- >>> findMin' ((fromList [5,8,6,3,7,9,10]) :: BinomialHeap Int)
+-- Just 3
+--
 findMin' :: (Ord a) => BinomialHeap a -> Maybe a
 findMin' h = (\(BinomialTree _ x _, _) -> x) `fmap` removeMinTree h
 
 -- | Exercise 3.5
 -- define findMin directly rather than through a call to `removeMinTree`.
+--
+-- prop> (\x xs -> findMin'' (fromList (x:xs)) == Just (minimum (x:xs))) (x :: Int) (xs :: [Int])
+--
+-- >>> findMin'' (empty' :: BinomialHeap Int)
+-- Nothing
+--
+-- >>> findMin'' (singletonHeap' 4)
+-- Just 4
+--
+-- >>> findMin'' ((fromList [5,8,6,3,7,9,10]) :: BinomialHeap Int)
+-- Just 3
+--
 findMin'' :: (Ord a) => BinomialHeap a -> Maybe a
 findMin'' (BinomialHeap []) = Nothing
+findMin'' (BinomialHeap (BinomialTree _ x _:[])) = Just x
+findMin'' (BinomialHeap (BinomialTree _ x _:ts)) = do
+    x' <- findMin'' (BinomialHeap ts)
+    return $ x `min` x'
 
 -- | Deletes the minimum element
 --
@@ -134,7 +153,7 @@ instance Heap BinomialHeap where
 
     merge = merge'
 
-    findMin     = findMin'
+    findMin     = findMin''
     deleteMin   = deleteMin'
 
 -- Helper Functions
