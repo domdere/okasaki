@@ -8,6 +8,10 @@ So far this library contains implementations of the following Chapters of *PFDS*
 
 ### Chapter 3
 
+Chapter 2 deals with some Sets/Trees (with the relevant modules listed):
+
+-   Sets ( [**Data.Set**](./src/Data/Set.hs "Data.Set") )
+
 Chapter 3 Deals with the following Data Structures (with the relevant modules listed):
 
 -   Heaps ( [**Data.Heap**](./src/Data/Heap.hs "Data.Heap") )
