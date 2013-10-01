@@ -27,7 +27,7 @@ data BlackNode a = Leaf | BlackNode a (RedBlackTree a) (RedBlackTree a) deriving
 
 -- | At times during the insert, there may exist violations of Invariant 1 at the roots of the subtrees considered,
 -- they will be corrected before the insert operation continues. these are the allowed broken states..
-data BrokenRBTree a =
+data InsertBrokenRBTree a =
         RedLeftRedChild a (RedNode a) (BlackNode a)
     |   RedRightRedChild a (BlackNode a) (RedNode a) deriving (Show, Eq)
 
@@ -39,7 +39,7 @@ data BrokenRBTree a =
 -- balanced right node, the element to be stored at the node at which they will be
 -- and then returns a new node/tree which is balanced at the root also
 -- (but Invariant 1 is satisfied for its children trees)
-leftBalance :: a -> BrokenRBTree a -> RedBlackTree a -> RedBlackTree a
+leftBalance :: a -> InsertBrokenRBTree a -> RedBlackTree a -> RedBlackTree a
 leftBalance z (RedLeftRedChild y (RedNode x a b) c) d   = RBNode $ Left $ RedNode y (BlackNode x (wrapBlack a) (wrapBlack b)) (BlackNode z (wrapBlack c) d)
 leftBalance z (RedRightRedChild x a (RedNode y b c)) d  = RBNode $ Left $ RedNode y (BlackNode x (wrapBlack a) (wrapBlack b)) (BlackNode z (wrapBlack c) d)
 
@@ -49,7 +49,7 @@ leftBalance z (RedRightRedChild x a (RedNode y b c)) d  = RBNode $ Left $ RedNod
 -- unbalanced right node, the element to be stored at the node at which they will be
 -- and then returns a new node/tree which is balanced at the root also
 -- (but Invariant 1 is satisfied for its children trees)
-rightBalance :: a -> RedBlackTree a -> BrokenRBTree a -> RedBlackTree a
+rightBalance :: a -> RedBlackTree a -> InsertBrokenRBTree a -> RedBlackTree a
 rightBalance x a (RedLeftRedChild z (RedNode y b c) d)   = RBNode $ Left $ RedNode y (BlackNode x a (wrapBlack b)) (BlackNode z (wrapBlack c) (wrapBlack d))
 rightBalance x a (RedRightRedChild y b (RedNode z c d))  = RBNode $ Left $ RedNode y (BlackNode x a (wrapBlack b)) (BlackNode z (wrapBlack c) (wrapBlack d))
 
@@ -66,7 +66,7 @@ wrapRed = RBNode . Left
 
 -- | Inserts an element into a red-black tree, potentially leaving invariant 1 broken at the root
 --
-ins :: (Ord a) => a -> RedBlackTree a -> Either (BrokenRBTree a) (RedBlackTree a)
+ins :: (Ord a) => a -> RedBlackTree a -> Either (InsertBrokenRBTree a) (RedBlackTree a)
 ins x (RBNode (Right Leaf)) = Right $ RBNode $ Left $ RedNode x Leaf Leaf
 ins x (RBNode (Left (RedNode y left right)))
     | x < y     = case x `insBlack` left of
