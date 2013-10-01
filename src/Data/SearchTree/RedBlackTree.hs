@@ -1,4 +1,4 @@
-module Data.Set.RedBlackTree where
+module Data.SearchTree.RedBlackTree where
 
 -- | From Chapter 3.3 of Purely Functional Data Structures
 -- "A Red-Black Tree is a binary search tree in which every node is coloured
