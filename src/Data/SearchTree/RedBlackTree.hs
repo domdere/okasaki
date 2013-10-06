@@ -1,14 +1,17 @@
 module Data.SearchTree.RedBlackTree where
 
+import Data.Function
+
 -- | From Chapter 3.3 of Purely Functional Data Structures
 -- "A Red-Black Tree is a binary search tree in which every node is coloured
 -- either Red or Black."
 --
 -- Every Red Black tree satisfies two invariants:
 --
---  1)  No Red node has a Red Child
---  2)  Every path from the root to an empty node contains the same
+--  1.  No Red node has a Red Child
+--  2.  Every path from the root to an empty node contains the same
 --      number of black nodes
+--
 
 data Colour = Red | Black deriving (Show, Eq)
 
@@ -17,7 +20,7 @@ data Colour = Red | Black deriving (Show, Eq)
 --
 -- Invariant 2 should be satisfied at all times however
 --
--- | This type will enforce Invariant 1
+-- This type will enforce Invariant 1
 data RedNode a = RedNode a (BlackNode a) (BlackNode a) deriving (Show, Eq)
 
 newtype RedBlackTree a = RBNode (Either (RedNode a) (BlackNode a)) deriving (Show, Eq)
@@ -30,6 +33,33 @@ data BlackNode a = Leaf | BlackNode a (RedBlackTree a) (RedBlackTree a) deriving
 data InsertBrokenRBTree a =
         RedLeftRedChild a (RedNode a) (BlackNode a)
     |   RedRightRedChild a (BlackNode a) (RedNode a) deriving (Show, Eq)
+
+-- | calculates the Black height of a tree, the number of black nodes from the root to a leaf,
+-- which will count as black. Invariant 2 says this calculation should be independent of whether the left or
+-- right path is chosen, however if there is a choice between a black and a red node, it will choose the
+-- black node to speed up the calculation.
+--
+-- The Leaf is technically a black node, but this function wont count it..
+--
+blackHeight :: RedBlackTree a -> Int
+blackHeight (RBNode (Right Leaf))                                                   = 0
+blackHeight (RBNode (Left (RedNode _ left _)))                                      = (blackHeight . wrapBlack) left
+blackHeight (RBNode (Right (BlackNode _ left@(RBNode (Right (BlackNode {}))) _)))   = 1 + blackHeight left
+blackHeight (RBNode (Right (BlackNode _ _ right@(RBNode (Right (BlackNode {}))))))  = 1 + blackHeight right
+blackHeight (RBNode (Right (BlackNode _ left _)))                                   = 1 + blackHeight left
+
+-- | inserts an element into the tree.
+--
+insert' :: (Ord a) => a -> RedBlackTree a -> RedBlackTree a
+x `insert'` t = either fixInsBroken colourRootBlack $ x `ins` t
+    where
+        colourRootBlack :: RedBlackTree a -> RedBlackTree a
+        colourRootBlack (RBNode (Left (RedNode x' blackLeft blackRight)))   = RBNode $ Right $ BlackNode x' (wrapBlack blackLeft) (wrapBlack blackRight)
+        colourRootBlack t'                                                  = t'
+
+-- | empty instance
+empty' :: RedBlackTree a
+empty' = RBNode $ Right Leaf
 
 -- Helpers
 
@@ -67,7 +97,8 @@ wrapRed = RBNode . Left
 -- | Inserts an element into a red-black tree, potentially leaving invariant 1 broken at the root
 --
 ins :: (Ord a) => a -> RedBlackTree a -> Either (InsertBrokenRBTree a) (RedBlackTree a)
-ins x (RBNode (Right Leaf)) = Right $ RBNode $ Left $ RedNode x Leaf Leaf
+ins x (RBNode (Right Leaf))         = Right $ RBNode $ Left $ RedNode x Leaf Leaf
+ins x (RBNode (Right blackNode))    = Right $ x `insBlack` blackNode
 ins x (RBNode (Left (RedNode y left right)))
     | x < y     = case x `insBlack` left of
         RBNode (Right b)    -> Right $ RBNode $ Left $ RedNode y b right
@@ -75,7 +106,12 @@ ins x (RBNode (Left (RedNode y left right)))
     | otherwise = case x `insBlack` right of
         RBNode (Right b)    -> Right $ RBNode $ Left $ RedNode y left b
         RBNode (Left b)     -> Left $ RedRightRedChild y left b
-ins x (RBNode (Right blackNode)) = Right $ x `insBlack` blackNode
+
+-- | fixes a broken tree from an ins operation, only works if the tree isnt going to be a subtree of another
+--
+fixInsBroken :: InsertBrokenRBTree a -> RedBlackTree a
+fixInsBroken (RedLeftRedChild y redLeft blackRight)     = RBNode $ Right $ BlackNode y (wrapRed redLeft) (wrapBlack blackRight)
+fixInsBroken (RedRightRedChild y blackLeft redRight)    = RBNode $ Right $ BlackNode y (wrapBlack blackLeft) (wrapRed redRight)
 
 -- | inserts an element into a black node
 insBlack :: (Ord a) => a -> BlackNode a -> RedBlackTree a
@@ -88,3 +124,21 @@ insBlack x (BlackNode y left right)
         Left brokenRight    -> rightBalance y left brokenRight
         Right a             -> RBNode $ Right $ BlackNode y left a
 
+-- | sends converts the root of a Red Black tree to a to a black node
+toBlack :: RedBlackTree a -> BlackNode a
+toBlack (RBNode (Right b)) = b
+toBlack (RBNode (Left (RedNode y left right))) = (BlackNode y `on` wrapBlack) left right
+
+-- | counts the red nodes in the red black tree
+--
+redCount :: RedBlackTree a -> Int
+redCount (RBNode (Right Leaf))                              = 0
+redCount (RBNode (Right (BlackNode _ left right)))          = ((+) `on` redCount) left right
+redCount (RBNode (Left (RedNode _ blackLeft blackRight)))   = (+1) $ ((+) `on` (redCount . wrapBlack)) blackLeft blackRight
+
+-- Invariants
+
+constantBlackHeightForAllPaths :: RedBlackTree a -> Bool
+constantBlackHeightForAllPaths (RBNode (Right Leaf)) = True
+constantBlackHeightForAllPaths (RBNode (Left (RedNode _ blackLeft blackRight))) = ((&&) `on` (constantBlackHeightForAllPaths . wrapBlack)) blackLeft blackRight && ((==) `on` (blackHeight . wrapBlack)) blackLeft blackRight
+constantBlackHeightForAllPaths (RBNode (Right (BlackNode _ left right))) = ((&&) `on` constantBlackHeightForAllPaths) left right && ((==) `on` blackHeight) left right

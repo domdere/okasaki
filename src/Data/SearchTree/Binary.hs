@@ -58,7 +58,7 @@ insertIfMissing' x t@(Node x' left right)
 -- otherwise it returns the same tree.
 --
 -- >>> 2 `removedFrom'` fromList [2,1,3]
--- Node 1 Leaf (Node 3 Leaf Leaf)
+-- Node 3 (Node 1 Leaf Leaf) Leaf
 --
 -- >>> 1 `removedFrom'` fromList [2,1,3]
 -- Node 2 Leaf (Node 3 Leaf Leaf)
@@ -109,6 +109,15 @@ removeMaxElement (Node x left right) = (maxElement, Node x left newRight)
 
 -- | remove the min element from tree and return both the min element
 -- if there is one and the tree with the element removed.
+--
+-- prop> (\(NoDupes t) -> checkMaybeMember (removeMaxElement t)) (t :: NoDupes Int)
+--
+-- >>> removeMaxElement (fromList [2,3,5,7,4,1])
+-- (Just 7,Node 2 (Node 1 Leaf Leaf) (Node 3 Leaf (Node 5 (Node 4 Leaf Leaf) Leaf)))
+--
+-- >>> removeMaxElement Leaf
+-- (Nothing,Leaf)
+--
 removeMinElement :: (Ord a) => BinaryTree a -> (Maybe a, BinaryTree a)
 removeMinElement Leaf = (Nothing, Leaf)
 removeMinElement (Node x Leaf Leaf) = (Just x, Leaf)
@@ -120,9 +129,10 @@ removeMinElement (Node x left right) = (minElement, Node x newLeft right)
 -- all the elements in the left.
 --
 -- >>> (fromList [2,1,3]) `mergeTrees` (fromList [5,4,6]) :: BinaryTree Int
--- Node 2 (Node 1 Leaf Leaf) (Node 3 Leaf (Node 5 (Node 4 Leaf Leaf) (Node 6 Leaf Leaf)))
+-- Node 4 (Node 2 (Node 1 Leaf Leaf) (Node 3 Leaf Leaf)) (Node 5 Leaf (Node 6 Leaf Leaf))
 --
-mergeTrees :: BinaryTree a -> BinaryTree a -> BinaryTree a
+mergeTrees :: (Ord a) => BinaryTree a -> BinaryTree a -> BinaryTree a
 mergeTrees Leaf t = t
-mergeTrees t Leaf = t
-mergeTrees (Node x left' right') right = Node x left' (right' `mergeTrees` right)
+mergeTrees left right = case removeMinElement right of
+    (Nothing, _)        -> left
+    (Just x, newRight)  -> Node x left newRight
