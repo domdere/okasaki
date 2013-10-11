@@ -12,157 +12,204 @@ import Data.Function
 --  2.  Every path from the root to an empty node contains the same
 --      number of black nodes
 --
+-- During Inserts, Invariant 1 is broken until rebalancing occurs,
+-- During Deletes, Invariant 2 is broken until rebalancing occurs.
 
-data Colour = Red | Black deriving (Show, Eq)
+-- | This type will enforce Invariant 1
+data RedBlackTree a =
+        Red a (BlackNode a) (BlackNode a)
+    |   Black (BlackNode a) deriving (Show, Eq)
 
--- | sometimes internally the tree will spend some time in a non-balanced state
--- where Invariant 1 is broken.
---
--- Invariant 2 should be satisfied at all times however
---
--- This type will enforce Invariant 1
-data RedNode a = RedNode a (BlackNode a) (BlackNode a) deriving (Show, Eq)
-
-newtype RedBlackTree a = RBNode (Either (RedNode a) (BlackNode a)) deriving (Show, Eq)
-
--- | the Leaf technically has no colour associated with it...
 data BlackNode a =
         Leaf
-    |   BlackNode a (RedBlackTree a) (RedBlackTree a) deriving (Show, Eq)
+    |   Node a (RedBlackTree a) (RedBlackTree a) deriving (Show, Eq)
 
--- | At times during the insert, there may exist violations of Invariant 1 at the roots of the subtrees considered,
--- they will be corrected before the insert operation continues. these are the allowed broken states..
-data InsertBrokenRBTree a =
+data RedNode a = RNode a (BlackNode a) (BlackNode a) deriving (Show, Eq)
+
+-- | During inserts the 1st invariant can be broken and there can be
+-- a red node with a red child,
+-- this type represents the instances of the 1st broken invariant that
+-- we will come across.
+--
+data InsertBrokenNode a =
         RedLeftRedChild a (RedNode a) (BlackNode a)
     |   RedRightRedChild a (BlackNode a) (RedNode a) deriving (Show, Eq)
 
--- | Deletes can break a tree by removing a black node and violating Invariant 2.
--- this data type will mark a child tree as having its black height changed.
--- so that we know to rebalance, in all cases where this is to occur,
--- the child will be a black one.
+-- | During deletes the 2nd invariant can be broken, when a black
+-- node is deleted and there becomes a path from the root to a Leaf
+-- node that has a different black count than the rest.  This type
+-- marks this case.
 --
-data DeleteBrokenTree a = DeleteBrokenTree (BlackNode a) deriving (Show, Eq)
+data DeleteResult a =
+        Broken (BlackNode a)
+    |   Ok (RedBlackTree a) deriving (Show, Eq)
 
--- | calculates the Black height of a tree, the number of black nodes from the root to a leaf,
--- which will count as black. Invariant 2 says this calculation should be independent of whether the left or
--- right path is chosen, however if there is a choice between a black and a red node, it will choose the
--- black node in a greedy _attempt_ to speed up the calculation.
---
--- The Leaf is technically a black node, but this function wont count it..
---
-blackHeight :: RedBlackTree a -> Int
-blackHeight (RBNode (Right Leaf))                                                   = 0
-blackHeight (RBNode (Left (RedNode _ left _)))                                      = (blackHeight . wrapBlack) left
-blackHeight (RBNode (Right (BlackNode _ left@(RBNode (Right (BlackNode {}))) _)))   = 1 + blackHeight left
-blackHeight (RBNode (Right (BlackNode _ _ right@(RBNode (Right (BlackNode {}))))))  = 1 + blackHeight right
-blackHeight (RBNode (Right (BlackNode _ left _)))                                   = 1 + blackHeight left
+-- These will be the SearchTree instance functions
 
--- | inserts an element into the tree.
+-- | The empty instance
+--
+empty' :: RedBlackTree a
+empty' = Black Leaf
+
+-- | insert an element into the tree
 --
 insert' :: (Ord a) => a -> RedBlackTree a -> RedBlackTree a
-x `insert'` t = either fixInsBroken colourRootBlack $ x `ins` t
-    where
-        colourRootBlack :: RedBlackTree a -> RedBlackTree a
-        colourRootBlack (RBNode (Left (RedNode x' blackLeft blackRight)))   = RBNode $ Right $ BlackNode x' (wrapBlack blackLeft) (wrapBlack blackRight)
-        colourRootBlack t'                                                  = t'
+insert' x t = either fixInsertBrokenNode colourRootBlack $ insTree True x t
 
--- | empty instance
-empty' :: RedBlackTree a
-empty' = RBNode $ Right Leaf
+-- | inserts an element into the tree only if its not in the tree
+-- already
+--
+insertIfMissing' :: (Ord a) => a -> RedBlackTree a -> RedBlackTree a
+insertIfMissing' x t = either fixInsertBrokenNode colourRootBlack $ insTree False x t
+
+-- | Checks for membership
+--
+member' :: (Ord a) => a -> RedBlackTree a -> Bool
+x `member'` (Red y left right)
+    | x == y            = True
+    | otherwise         = (member' x . Black) $ if x < y then left else right
+x `member'` (Black b)   = x `memberInBlack` b
+    where
+        memberInBlack :: (Ord a) => a -> BlackNode a -> Bool
+        _ `memberInBlack` Leaf  = False
+        x' `memberInBlack` (Node y left right)
+            | x' == y           = True
+            | otherwise         = member' x' $ if x' < y then left else right
+
 
 -- Helpers
 
--- | Balance an Unbalanced Red-Black Tree
--- The short version of what this function does is take the element to be stored at the node,
--- the desired colour of the node, the unbalanced left node and a potentially
--- balanced right node, the element to be stored at the node at which they will be
--- and then returns a new node/tree which is balanced at the root also
--- (but Invariant 1 is satisfied for its children trees)
-leftBalance :: a -> InsertBrokenRBTree a -> RedBlackTree a -> RedBlackTree a
-leftBalance z (RedLeftRedChild y (RedNode x a b) c) d   = RBNode $ Left $ RedNode y (BlackNode x (wrapBlack a) (wrapBlack b)) (BlackNode z (wrapBlack c) d)
-leftBalance z (RedRightRedChild x a (RedNode y b c)) d  = RBNode $ Left $ RedNode y (BlackNode x (wrapBlack a) (wrapBlack b)) (BlackNode z (wrapBlack c) d)
-
--- | Balance an Unbalanced Red-Black Tree
--- The short version of what this function does is take the element to be stored at the node,
--- the desired colour of the node, the balanced left node and an
--- unbalanced right node, the element to be stored at the node at which they will be
--- and then returns a new node/tree which is balanced at the root also
--- (but Invariant 1 is satisfied for its children trees)
-rightBalance :: a -> RedBlackTree a -> InsertBrokenRBTree a -> RedBlackTree a
-rightBalance x a (RedLeftRedChild z (RedNode y b c) d)   = RBNode $ Left $ RedNode y (BlackNode x a (wrapBlack b)) (BlackNode z (wrapBlack c) (wrapBlack d))
-rightBalance x a (RedRightRedChild y b (RedNode z c d))  = RBNode $ Left $ RedNode y (BlackNode x a (wrapBlack b)) (BlackNode z (wrapBlack c) (wrapBlack d))
-
-
--- | Wraps a Black node up to make it a red black tree
+-- | Count the black nodes in a tree, technically the Leaves count as
+-- Black but they wont be counted.
 --
-wrapBlack :: BlackNode a -> RedBlackTree a
-wrapBlack = RBNode . Right
+-- >>> countBlack (Black Leaf)
+-- 0
+--
+countBlack :: RedBlackTree a -> Int
+countBlack (Black Leaf)                 = 0
+countBlack (Black (Node _ left right))  = 1 + ((+) `on` countBlack) left right
+countBlack (Red _ left right)           = ((+) `on` (countBlack . Black)) left right
 
--- | Wraps a Red node up to make it a red black tree
+-- | Count the red nodes in a tree.
+--
+-- >>> countRed (Black Leaf)
+-- 0
+--
+countRed :: RedBlackTree a -> Int
+countRed (Black Leaf)                 = 0
+countRed (Black (Node _ left right))  = ((+) `on` countRed) left right
+countRed (Red _ left right)           = 1 + ((+) `on` (countRed . Black)) left right
+
+-- | During Inserts the 1st invariant gets broken and
+-- needs to be fixed as we merge the trees back up,
+-- this function fuses together a broken left tree and a
+-- balanced right tree, with a node with the given element.
+--
+leftBalance :: a -> InsertBrokenNode a -> RedBlackTree a -> RedBlackTree a
+leftBalance z (RedLeftRedChild y (RNode x a b) c) d     = Red y (Node x (Black a) (Black b)) (Node z (Black c) d)
+leftBalance z (RedRightRedChild x a (RNode y b c)) d    = Red y (Node x (Black a) (Black b)) (Node z (Black c) d)
+
+-- | During Inserts the 1st invariant gets broken and
+-- needs to be fixed as we merge the trees back up,
+-- this function fuses together a balanced left tree and a
+-- broken right tree, with a node with the given element.
+--
+rightBalance :: a -> RedBlackTree a -> InsertBrokenNode a -> RedBlackTree a
+rightBalance x a (RedLeftRedChild z (RNode y b c) d)   = Red y (Node x a (Black b)) (Node z (Black c) (Black d))
+rightBalance x a (RedRightRedChild y b (RNode z c d))  = Red y (Node x a (Black b)) (Node z (Black c) (Black d))
+
+-- | wraps a RedNode up as a RedBlackTree a
 --
 wrapRed :: RedNode a -> RedBlackTree a
-wrapRed = RBNode . Left
+wrapRed (RNode x left right) = Red x left right
 
--- | Inserts an element into a red-black tree, potentially leaving invariant 1 broken at the root
+-- | insTree inserts an element into a red black tree, works recursively
+-- and returns a tree that breaks Invariant 1 at the root,
+-- effectively bubbling the broken Red Node up towards the root until
+-- it can be rebalanced.
 --
-ins :: (Ord a) => a -> RedBlackTree a -> Either (InsertBrokenRBTree a) (RedBlackTree a)
-ins x (RBNode (Right Leaf))         = Right $ RBNode $ Left $ RedNode x Leaf Leaf
-ins x (RBNode (Right blackNode))    = Right $ x `insBlack` blackNode
-ins x (RBNode (Left (RedNode y left right)))
-    | x < y     = case x `insBlack` left of
-        RBNode (Right b)    -> Right $ RBNode $ Left $ RedNode y b right
-        RBNode (Left b)     -> Left $ RedLeftRedChild y b right
-    | otherwise = case x `insBlack` right of
-        RBNode (Right b)    -> Right $ RBNode $ Left $ RedNode y left b
-        RBNode (Left b)     -> Left $ RedRightRedChild y left b
-
--- | fixes a broken tree from an ins operation, only works if the tree isnt going to be a subtree of another
+-- If the bool is true it will still add the element if it is already
+-- in the tree.
 --
-fixInsBroken :: InsertBrokenRBTree a -> RedBlackTree a
-fixInsBroken (RedLeftRedChild y redLeft blackRight)     = RBNode $ Right $ BlackNode y (wrapRed redLeft) (wrapBlack blackRight)
-fixInsBroken (RedRightRedChild y blackLeft redRight)    = RBNode $ Right $ BlackNode y (wrapBlack blackLeft) (wrapRed redRight)
+insTree :: (Ord a) => Bool -> a -> RedBlackTree a -> Either (InsertBrokenNode a) (RedBlackTree a)
+insTree addDupes x (Black blackNode) = Right $ insBlack addDupes x blackNode
+insTree addDupes x t@(Red y left right)
+    | x < y                     = case insBlack addDupes x left of
+        Black b             -> Right $ Red y b right
+        Red y' left' right' -> Left $ RedLeftRedChild y (RNode y' left' right') right
+    | x == y && not addDupes    = Right t
+    | otherwise                 = case insBlack addDupes x right of
+        Black b             -> Right $ Red y left b
+        Red y' left' right' -> Left $ RedRightRedChild y left (RNode y' left' right')
 
 -- | inserts an element into a black node
-insBlack :: (Ord a) => a -> BlackNode a -> RedBlackTree a
-insBlack x Leaf = RBNode $ Left $ RedNode x Leaf Leaf
-insBlack x (BlackNode y left right)
-    | x < y     = case x `ins` left of
-        Left brokenLeft -> leftBalance y brokenLeft right
-        Right a         -> RBNode $ Right $ BlackNode y a right
-    | otherwise = case x `ins` right of
+--
+-- If the Bool is true it will add dupes to the tree if the element already
+-- exists in the tree.
+--
+insBlack :: (Ord a) => Bool -> a -> BlackNode a -> RedBlackTree a
+insBlack _ x Leaf               = Red x Leaf Leaf
+insBlack addDupes x t@(Node y left right)
+    | x < y                     = case insTree addDupes x left of
+        Left brokenLeft     -> leftBalance y brokenLeft right
+        Right a             -> Black $ Node y a right
+    | x == y && not addDupes    = Black t
+    | otherwise                 = case insTree addDupes x right of
         Left brokenRight    -> rightBalance y left brokenRight
-        Right a             -> RBNode $ Right $ BlackNode y left a
+        Right a             -> Black $ Node y left a
 
--- | sends converts the root of a Red Black tree to a to a black node
-toBlack :: RedBlackTree a -> BlackNode a
-toBlack (RBNode (Right b)) = b
-toBlack (RBNode (Left (RedNode y left right))) = (BlackNode y `on` wrapBlack) left right
-
--- | counts the red nodes in the red black tree
+-- | colours the root node black
 --
-redCount :: RedBlackTree a -> Int
-redCount (RBNode (Right Leaf))                              = 0
-redCount (RBNode (Right (BlackNode _ left right)))          = ((+) `on` redCount) left right
-redCount (RBNode (Left (RedNode _ blackLeft blackRight)))   = (+1) $ ((+) `on` (redCount . wrapBlack)) blackLeft blackRight
+colourRootBlack :: RedBlackTree a -> RedBlackTree a
+colourRootBlack t@(Black _) = t
+colourRootBlack (Red x left right) = Black $ (Node x `on` Black) left right
 
--- | splits the properties of a node into a tuple
+-- | fix broken tree
 --
-getProps :: RedBlackTree a -> Maybe (Colour, a, RedBlackTree a, RedBlackTree a)
-getProps (RBNode (Right Leaf)) = Nothing
-getProps (RBNode (Right (BlackNode x left right))) = Just (Black, x, left, right)
-getProps (RBNode (Left (RedNode x left right))) = Just (Red, x, wrapBlack left, wrapBlack right)
-
--- | removes the minimum element of a Red Black Tree
+-- once the red node with the red child is bubbled to the top it can
+-- be fixed by just colouring the node Black.
 --
-removeMinElement :: RedBlackTree a -> (Maybe a, Either (DeleteBrokenTree a) (RedBlackTree a))
-removeMinElement t = case getProps t of
-    Nothing                                                                         -> (Nothing, Right t)
-    Just (Red, x, RBNode (Right Leaf), right)                                       -> (Just x, Right right)
-    Just (Black, x, RBNode (Right Leaf), rightTree@(RBNode (Left (RedNode {}))))    -> (Just x, (Right . wrapBlack . toBlack) rightTree)
+fixInsertBrokenNode :: InsertBrokenNode a -> RedBlackTree a
+fixInsertBrokenNode (RedLeftRedChild x left right)  = Black $ Node x (wrapRed left) (Black right)
+fixInsertBrokenNode (RedRightRedChild x left right) = Black $ Node x (Black left) (wrapRed right)
 
--- Invariants
+-- | removes the minimum element of a tree and returns
+-- both the element removed and the resultant tree.
+--
+removeMin :: RedBlackTree a -> (Maybe a, DeleteResult a)
+removeMin (Black Leaf) = (Nothing, Ok $ Black Leaf)
+removeMin (Red x left s@(Node y (Black sl) (Black sr))) = case removeMin (Black left) of
+    (Nothing, _) -> (Just x, Ok $ Black s)
+    (x', Ok (Black left')) -> (x', Ok $ Red x left' s)
+    (x', Broken n) -> (x', Ok $ Black $ Node x (Black n) (Red y sl sr))
+removeMin (Red x left s@(Node y (Red slx sll slr) (Black sr))) = case removeMin (Black left) of
+    (Nothing, _) -> (Just x, Ok $ Black s)
+    (x', Ok (Black left')) -> (x', Ok $ Red x left' s)
+    (x', Broken n) -> (x', Ok $ Red x n $ fixDeleteCase y (RNode slx sll slr) sr)
+removeMin (Red x left s@(Node y sl (Red srx srl srr))) = case removeMin (Black left) of
+    (Nothing, _) -> (Just x, Ok $ Black s)
+    (x', Ok (Black left')) -> (x', Ok $ Red x left' s)
+    (x', Broken n) -> (x', Ok $ Red y (Node x (Black n) sl) $ Node srx (Black srl) (Black srr))
+removeMin (Black (Node x left s@(Red y sl sr))) = case removeMin left of
+    (Nothing, _) -> (Just x, (Ok . colourRootBlack) s)
+    (x', Ok left') -> (x', Ok $ Black $ Node x left' s)
+    (x', Broken n) -> (x', Ok $ Black $ Node y (Red x n sl) (Black sr))
+removeMin (Black (Node x left (Black s@(Node y (Black sl) (Black sr))))) = case removeMin left of
+    (Nothing, _) -> (Just x, Broken s)
+    (x', Ok left') -> (x', Ok $ Black $ Node x left' (Black s))
+    (x', Broken n) -> (x', Ok $ Black $ Node x (Black n) (Red y sl sr))
+removeMin (Black (Node x left (Black s@(Node sx (Red slx sll slr) (Black sr))))) = case removeMin left of
+    (Nothing, _) -> (Just x, Broken s)
+    (x', Ok left') -> (x', Ok $ Black $ Node x left' (Black s))
+    (x', Broken n) -> (x', Ok $ Black $ Node x (Black n) (Black $ fixDeleteCase sx (RNode slx sll slr) sr))
+removeMin (Black (Node x left (Black s@(Node y sl (Red srx srl srr))))) = case removeMin left of
+    (Nothing, _) -> (Just x, Broken s)
+    (x', Ok left') -> (x', Ok $ Black $ Node x left' (Black s))
+    (x', Broken n) -> (x', Ok $ Black $ Node y (Black $ Node x (Black n) sl) $ Black $ Node srx (Black srl) (Black srr))
+removeMin (Red _ _ Leaf) = error "Unbalanced Tree, Invariant 2 broken..."
+removeMin (Black (Node _ _ (Black Leaf))) = error "Unbalanced Tree, Invariant 2 broken..."
 
-constantBlackHeightForAllPaths :: RedBlackTree a -> Bool
-constantBlackHeightForAllPaths (RBNode (Right Leaf)) = True
-constantBlackHeightForAllPaths (RBNode (Left (RedNode _ blackLeft blackRight))) = ((&&) `on` (constantBlackHeightForAllPaths . wrapBlack)) blackLeft blackRight && ((==) `on` (blackHeight . wrapBlack)) blackLeft blackRight
-constantBlackHeightForAllPaths (RBNode (Right (BlackNode _ left right))) = ((&&) `on` constantBlackHeightForAllPaths) left right && ((==) `on` blackHeight) left right
+-- | rebalances one of the delete cases see `removeMin` to see which one.
+--
+fixDeleteCase :: a -> RedNode a -> BlackNode a -> BlackNode a
+fixDeleteCase s (RNode x sll slr) sr = Node x (Black sll) (Red s slr sr)
