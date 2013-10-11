@@ -26,7 +26,9 @@ data RedNode a = RedNode a (BlackNode a) (BlackNode a) deriving (Show, Eq)
 newtype RedBlackTree a = RBNode (Either (RedNode a) (BlackNode a)) deriving (Show, Eq)
 
 -- | the Leaf technically has no colour associated with it...
-data BlackNode a = Leaf | BlackNode a (RedBlackTree a) (RedBlackTree a) deriving (Show, Eq)
+data BlackNode a =
+        Leaf
+    |   BlackNode a (RedBlackTree a) (RedBlackTree a) deriving (Show, Eq)
 
 -- | At times during the insert, there may exist violations of Invariant 1 at the roots of the subtrees considered,
 -- they will be corrected before the insert operation continues. these are the allowed broken states..
@@ -34,10 +36,17 @@ data InsertBrokenRBTree a =
         RedLeftRedChild a (RedNode a) (BlackNode a)
     |   RedRightRedChild a (BlackNode a) (RedNode a) deriving (Show, Eq)
 
+-- | Deletes can break a tree by removing a black node and violating Invariant 2.
+-- this data type will mark a child tree as having its black height changed.
+-- so that we know to rebalance, in all cases where this is to occur,
+-- the child will be a black one.
+--
+data DeleteBrokenTree a = DeleteBrokenTree (BlackNode a) deriving (Show, Eq)
+
 -- | calculates the Black height of a tree, the number of black nodes from the root to a leaf,
 -- which will count as black. Invariant 2 says this calculation should be independent of whether the left or
 -- right path is chosen, however if there is a choice between a black and a red node, it will choose the
--- black node to speed up the calculation.
+-- black node in a greedy _attempt_ to speed up the calculation.
 --
 -- The Leaf is technically a black node, but this function wont count it..
 --
@@ -135,6 +144,21 @@ redCount :: RedBlackTree a -> Int
 redCount (RBNode (Right Leaf))                              = 0
 redCount (RBNode (Right (BlackNode _ left right)))          = ((+) `on` redCount) left right
 redCount (RBNode (Left (RedNode _ blackLeft blackRight)))   = (+1) $ ((+) `on` (redCount . wrapBlack)) blackLeft blackRight
+
+-- | splits the properties of a node into a tuple
+--
+getProps :: RedBlackTree a -> Maybe (Colour, a, RedBlackTree a, RedBlackTree a)
+getProps (RBNode (Right Leaf)) = Nothing
+getProps (RBNode (Right (BlackNode x left right))) = Just (Black, x, left, right)
+getProps (RBNode (Left (RedNode x left right))) = Just (Red, x, wrapBlack left, wrapBlack right)
+
+-- | removes the minimum element of a Red Black Tree
+--
+removeMinElement :: RedBlackTree a -> (Maybe a, Either (DeleteBrokenTree a) (RedBlackTree a))
+removeMinElement t = case getProps t of
+    Nothing                                                                         -> (Nothing, Right t)
+    Just (Red, x, RBNode (Right Leaf), right)                                       -> (Just x, Right right)
+    Just (Black, x, RBNode (Right Leaf), rightTree@(RBNode (Left (RedNode {}))))    -> (Just x, (Right . wrapBlack . toBlack) rightTree)
 
 -- Invariants
 
