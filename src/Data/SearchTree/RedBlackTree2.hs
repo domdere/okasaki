@@ -61,6 +61,10 @@ data InsRedBlackResult blacktype a =
     |   RedBlackRight a (blacktype a) (RedNode blacktype a)
     |   GoodTree (RedBlackTree blacktype a) deriving (Show, Eq)
 
+data PossibleHeightIncResult blacktype a =
+        SameHeight (RedBlackTree blacktype a)
+    |   IncHeight (RedBlackTree (BlackNonLeaf blacktype) a) deriving (Show, Eq)
+
 -- Classes and Instances
 
 class BlackNode b where
@@ -91,6 +95,12 @@ instance (BlackNode a) => BlackNode (BlackNonLeaf a) where
 
 empty' :: RedBlackTree BlackLeaf a
 empty' = Black BlackLeaf
+
+insertRB :: (BlackNode b, Ord a) => Bool -> a -> RedBlackTree b a -> PossibleHeightIncResult b a
+insertRB dupes x t = case insRedBlackTree dupes x t of
+    GoodTree tree                   -> colourRootBlack tree
+    RedBlackLeft x' left right      -> IncHeight $ Black $ BlackNode x' (Red left) (Black right)
+    RedBlackRight x' left right     -> IncHeight $ Black $ BlackNode x' (Black left) (Red right)
 
 -- | Inserts an element into the RedBlack Tree
 --
@@ -140,15 +150,32 @@ insRedBlackTree dupes x (Red redNode)       = case insRed dupes x redNode of
     RedRight x' left right  -> RedBlackRight x' left right
     Good goodRed            -> GoodTree $ Red goodRed
 
--- | during insBlack ops we may need to rebalance the tree,
+-- | during `insBlack` ops we may need to rebalance the tree,
 -- breakages of invariant 1 bubble up the tree until they get to
 -- a black node and either get rebalanced here or in `rbalance`
 -- it gets called when trying to form a black node, and takes
 -- the element at the intended black node, the possibly broken left child
 -- and the good right child.
 --
-lbalance :: a -> InsRedBlackResult b a -> RedBlackTree b a -> RedBlackTree b a
-lbalance x (GoodTree left) right        = Black $ BlackNode x left right
--- Double check this line....
-lbalance z (RedBlackLeft x a r) d   = 
+-- Since the intention is to create a black node, the depth of the tree will increase
+-- by one.  This is true even if ultimately the result is a red node, as 2 Black nodes
+-- are still added.
+--
+lbalance :: a -> InsRedBlackResult b a -> RedBlackTree b a -> RedBlackTree (BlackNonLeaf b) a
+lbalance x (GoodTree left) right                    = Black $ BlackNode x left right
+lbalance z (RedBlackLeft y (RedNode x a b) c) d     = Red $ RedNode y (BlackNode x (Black a) (Black b)) (BlackNode z (Black c) d)
+lbalance z (RedBlackRight x a (RedNode y b c)) d    = Red $ RedNode y (BlackNode x (Black a) (Black b)) (BlackNode z (Black c) d)
 
+-- | like `lbalance` but for use when you want to create a node with a
+-- good left child tree and a broken right child tree
+--
+rbalance :: a -> RedBlackTree b a -> InsRedBlackResult b a -> RedBlackTree (BlackNonLeaf b) a
+rbalance x left (GoodTree right)                    = Black $ BlackNode x left right
+rbalance x a (RedBlackLeft z (RedNode y b c) d)     = Red $ RedNode y (BlackNode x a (Black b)) (BlackNode z (Black c) (Black d))
+rbalance x a (RedBlackRight y b (RedNode z c d))    = Red $ RedNode y (BlackNode x a (Black b)) (BlackNode z (Black c) (Black d))
+
+-- | Colours the root Black if necessary, potentially increasing the black height of the tree.
+--
+colourRootBlack :: RedBlackTree b a -> PossibleHeightIncResult b a
+colourRootBlack t@(Black {})                    = SameHeight t
+colourRootBlack (Red (RedNode x left right))    = IncHeight $ Black $ ((BlackNode x) `on` Black) left right
