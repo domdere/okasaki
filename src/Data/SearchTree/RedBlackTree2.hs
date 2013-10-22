@@ -26,7 +26,7 @@ import Data.Function
 
 data BlackLeaf a = BlackLeaf deriving (Show, Eq)
 
-data BlackNonLeaf childNodeType a = BlackNode a (RedBlackTree childNodeType a) (RedBlackTree childNodeType a) deriving (Show, Eq)
+data BlackNonLeaf childNodeType a = BlackNode a (RedOrBlackNode childNodeType a) (RedOrBlackNode childNodeType a) deriving (Show, Eq)
 
 -- | This type will enforce Invariant 1, Red nodes have only black children
 --
@@ -35,15 +35,15 @@ data BlackNonLeaf childNodeType a = BlackNode a (RedBlackTree childNodeType a) (
 --
 data RedNode blacktype a = RedNode a (blacktype a) (blacktype a) deriving (Show, Eq)
 
-data RedBlackTree blacktype a =
+data RedOrBlackNode blacktype a =
         Red (RedNode blacktype a)
     |   Black (blacktype a) deriving (Show, Eq)
 
 -- | An Insert Operation can lead to a tree of the same black height
 -- or one with an incremented height
 data SuccessfulRedBlackInsertResult blacktype a =
-        Same (RedBlackTree blacktype a)
-    |   Incremented (RedBlackTree (BlackNonLeaf blacktype) a) deriving (Show, Eq)
+        Same (blacktype a)
+    |   Incremented ((BlackNonLeaf blacktype) a) deriving (Show, Eq)
 
 -- | 'ins' is the name used for the insert helper functions,
 -- An insRed operation can result in a situation where Invariant 1 is
@@ -59,18 +59,27 @@ data InsRedResult blacktype a =
 data InsRedBlackResult blacktype a =
         RedBlackLeft a (RedNode blacktype a) (blacktype a)
     |   RedBlackRight a (blacktype a) (RedNode blacktype a)
-    |   GoodTree (RedBlackTree blacktype a) deriving (Show, Eq)
+    |   GoodTree (RedOrBlackNode blacktype a) deriving (Show, Eq)
 
 data PossibleHeightIncResult blacktype a =
-        SameHeight (RedBlackTree blacktype a)
-    |   IncHeight (RedBlackTree (BlackNonLeaf blacktype) a) deriving (Show, Eq)
+        SameHeight (blacktype a)
+    |   IncHeight ((BlackNonLeaf blacktype) a) deriving (Show, Eq)
+
+data PossibleHeightDecResult childblacktype a =
+        NoDec ((BlackNonLeaf childblacktype) a)
+    |   DecHeight (childblacktype a) deriving (Show, Eq)
+
+data RemoveMinBlackResult childblacktype a =
+        GoodBlack ((BlackNonLeaf childblacktype) a)
+    |   BadBlack (childblacktype a)
 
 -- Classes and Instances
 
 class BlackNode b where
     blackHeight :: b a -> Int
-    insBlack :: (Ord a) => Bool -> a -> b a -> RedBlackTree b a
+    insBlack :: (Ord a) => Bool -> a -> b a -> RedOrBlackNode b a
     memberBlack :: (Ord a) => a -> b a -> Bool
+    removeMinBlack :: (Ord a) => (BlackNonLeaf b) a -> (a, RemoveMinBlackResult b a)
 
 -- | BlackLeaf is the simplest instance of BlackNode
 --
@@ -80,6 +89,12 @@ class BlackNode b where
 -- >>> insBlack 234 BlackLeaf
 -- Red (RedNode 234 BlackLeaf BlackLeaf)
 --
+-- >>> memberBlack 234 (insBlack 234 BlackLeaf)
+-- True
+--
+-- >>> memberBlack 233 (insBlack 234 BlackLeaf)
+-- False
+--
 instance BlackNode BlackLeaf where
     blackHeight _ = 0
 
@@ -87,31 +102,40 @@ instance BlackNode BlackLeaf where
 
     memberBlack _ _ = False
 
+    -- If the min element is at a red node then we're good, remove that node and return the right child
+    removeMinBlack (BlackNode y (Red (RedNode x BlackLeaf BlackLeaf)) right) = (x, GoodBlack (BlackNode y (Black BlackLeaf) right))
+    -- If the min is at a black node with a red child, then we delete the node and paint the child black
+    removeMinBlack (BlackNode x (Black BlackLeaf) (Red (RedNode y left right))) = (x, GoodBlack (BlackNode y (Black left) (Black right)))
+    -- This is the complicated case, when the parent and child are both black (which must be a leaf).. this case must be bubbled
+    -- up...
+    removeMinBlack (BlackNode x (Black BlackLeaf) (Black BlackLeaf)) = (x, BadBlack BlackLeaf)
+
 instance (BlackNode a) => BlackNode (BlackNonLeaf a) where
     blackHeight (BlackNode _ l _ ) = 1 + treeBlackHeight l
 
     insBlack dupes x n@(BlackNode y left right)
         | (x == y) && not dupes = Black n
-        | x < y                 = lbalance y (insRedBlackTree dupes x left) right
-        | otherwise             = rbalance y left (insRedBlackTree dupes x right)
+        | x < y                 = lbalance y (insRedOrBlackNode dupes x left) right
+        | otherwise             = rbalance y left (insRedOrBlackNode dupes x right)
 
     memberBlack x (BlackNode y left right)
         | x == y    = True
         | x < y     = memberRB x left
         | otherwise = memberRB x right
 
+    removeMinBlack (BlackNode x (Black left) right) = (min, GoodBlack $ balanceBlack x newLeft right)
+        where
+            (min, newLeft) = removeMinBlack left
+
 -- Tree Functions
 
-empty' :: RedBlackTree BlackLeaf a
+empty' :: RedOrBlackNode BlackLeaf a
 empty' = Black BlackLeaf
 
-insertRB :: (BlackNode b, Ord a) => Bool -> a -> RedBlackTree b a -> PossibleHeightIncResult b a
-insertRB dupes x t = case insRedBlackTree dupes x t of
-    GoodTree tree                   -> colourRootBlack tree
-    RedBlackLeft x' left right      -> IncHeight $ Black $ BlackNode x' (Red left) (Black right)
-    RedBlackRight x' left right     -> IncHeight $ Black $ BlackNode x' (Black left) (Red right)
+insertRB :: (BlackNode b, Ord a) => Bool -> a -> b a -> PossibleHeightIncResult b a
+insertRB dupes x = colourRootBlack . insBlack dupes x
 
-memberRB :: (BlackNode b, Ord a) => a -> RedBlackTree b a -> Bool
+memberRB :: (BlackNode b, Ord a) => a -> RedOrBlackNode b a -> Bool
 memberRB x (Black blackNode) = memberBlack x blackNode
 memberRB x (Red (RedNode y left right))
     | x == y    = True
@@ -127,7 +151,7 @@ blackHeightRed (RedNode _ l _) = blackHeight l
 
 -- | returns the black height for a redblack tree
 --
-treeBlackHeight :: (BlackNode b) => RedBlackTree b a -> Int
+treeBlackHeight :: (BlackNode b) => RedOrBlackNode b a -> Int
 treeBlackHeight (Black n)   = blackHeight n
 treeBlackHeight (Red n)     = blackHeightRed n
 
@@ -138,7 +162,7 @@ treeBlackHeight (Red n)     = blackHeightRed n
 -- >>> singletonTree 1
 -- Red (RedNode 1 BlackLeaf BlackLeaf)
 --
-singletonTree :: a -> RedBlackTree BlackLeaf a
+singletonTree :: a -> RedOrBlackNode BlackLeaf a
 singletonTree x = Red $ RedNode x BlackLeaf BlackLeaf
 
 -- | inserts an Element into a Red Node.
@@ -154,9 +178,9 @@ insRed dupes x t@(RedNode y left right)
         Red newRight    -> RedRight y left newRight
         Black newRight  -> Good $ RedNode y left newRight
 
-insRedBlackTree :: (BlackNode b, Ord a) => Bool -> a -> RedBlackTree b a -> InsRedBlackResult b a
-insRedBlackTree dupes x (Black blackNode)   = GoodTree $ insBlack dupes x blackNode
-insRedBlackTree dupes x (Red redNode)       = case insRed dupes x redNode of
+insRedOrBlackNode :: (BlackNode b, Ord a) => Bool -> a -> RedOrBlackNode b a -> InsRedBlackResult b a
+insRedOrBlackNode dupes x (Black blackNode)   = GoodTree $ insBlack dupes x blackNode
+insRedOrBlackNode dupes x (Red redNode)       = case insRed dupes x redNode of
     RedLeft x' left right   -> RedBlackLeft x' left right
     RedRight x' left right  -> RedBlackRight x' left right
     Good goodRed            -> GoodTree $ Red goodRed
@@ -172,7 +196,7 @@ insRedBlackTree dupes x (Red redNode)       = case insRed dupes x redNode of
 -- by one.  This is true even if ultimately the result is a red node, as 2 Black nodes
 -- are still added.
 --
-lbalance :: a -> InsRedBlackResult b a -> RedBlackTree b a -> RedBlackTree (BlackNonLeaf b) a
+lbalance :: a -> InsRedBlackResult b a -> RedOrBlackNode b a -> RedOrBlackNode (BlackNonLeaf b) a
 lbalance x (GoodTree left) right                    = Black $ BlackNode x left right
 lbalance z (RedBlackLeft y (RedNode x a b) c) d     = Red $ RedNode y (BlackNode x (Black a) (Black b)) (BlackNode z (Black c) d)
 lbalance z (RedBlackRight x a (RedNode y b c)) d    = Red $ RedNode y (BlackNode x (Black a) (Black b)) (BlackNode z (Black c) d)
@@ -180,13 +204,21 @@ lbalance z (RedBlackRight x a (RedNode y b c)) d    = Red $ RedNode y (BlackNode
 -- | like `lbalance` but for use when you want to create a node with a
 -- good left child tree and a broken right child tree
 --
-rbalance :: a -> RedBlackTree b a -> InsRedBlackResult b a -> RedBlackTree (BlackNonLeaf b) a
+rbalance :: a -> RedOrBlackNode b a -> InsRedBlackResult b a -> RedOrBlackNode (BlackNonLeaf b) a
 rbalance x left (GoodTree right)                    = Black $ BlackNode x left right
 rbalance x a (RedBlackLeft z (RedNode y b c) d)     = Red $ RedNode y (BlackNode x a (Black b)) (BlackNode z (Black c) (Black d))
 rbalance x a (RedBlackRight y b (RedNode z c d))    = Red $ RedNode y (BlackNode x a (Black b)) (BlackNode z (Black c) (Black d))
 
+-- | In some cases when deleting elements from a Red Black Tree, the black height invariant (#2)
+-- can get broken, this function attempts the rebalance it
+--
+balanceBlack :: (BlackNode b) =>  a -> RemoveMinBlackResult b a-> RedOrBlackNode (BlackNonLeaf b) a-> BlackNonLeaf (BlackNonLeaf b) a
+balanceBlack x (GoodBlack left) right = BlackNode x (Black left) right
+-- This also has to be done in balanceRed
+balanceBlack x (BadBlack n) s@(Red (RedNode y sl sr)) = BlackNode y (Red $ RedNode x n sl) (Black sr)
+
 -- | Colours the root Black if necessary, potentially increasing the black height of the tree.
 --
-colourRootBlack :: RedBlackTree b a -> PossibleHeightIncResult b a
-colourRootBlack t@(Black {})                    = SameHeight t
-colourRootBlack (Red (RedNode x left right))    = IncHeight $ Black $ (BlackNode x `on` Black) left right
+colourRootBlack :: RedOrBlackNode b a -> PossibleHeightIncResult b a
+colourRootBlack (Black t)                       = SameHeight t
+colourRootBlack (Red (RedNode x left right))    = IncHeight $ (BlackNode x `on` Black) left right
