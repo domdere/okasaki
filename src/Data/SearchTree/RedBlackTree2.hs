@@ -70,6 +70,7 @@ data PossibleHeightIncResult blacktype a =
 class BlackNode b where
     blackHeight :: b a -> Int
     insBlack :: (Ord a) => Bool -> a -> b a -> RedBlackTree b a
+    memberBlack :: (Ord a) => a -> b a -> Bool
 
 -- | BlackLeaf is the simplest instance of BlackNode
 --
@@ -81,7 +82,10 @@ class BlackNode b where
 --
 instance BlackNode BlackLeaf where
     blackHeight _ = 0
+
     insBlack _ x BlackLeaf = Red $ RedNode x BlackLeaf BlackLeaf
+
+    memberBlack _ _ = False
 
 instance (BlackNode a) => BlackNode (BlackNonLeaf a) where
     blackHeight (BlackNode _ l _ ) = 1 + treeBlackHeight l
@@ -90,6 +94,11 @@ instance (BlackNode a) => BlackNode (BlackNonLeaf a) where
         | (x == y) && not dupes = Black n
         | x < y                 = lbalance y (insRedBlackTree dupes x left) right
         | otherwise             = rbalance y left (insRedBlackTree dupes x right)
+
+    memberBlack x (BlackNode y left right)
+        | x == y    = True
+        | x < y     = memberRB x left
+        | otherwise = memberRB x right
 
 -- Tree Functions
 
@@ -102,10 +111,12 @@ insertRB dupes x t = case insRedBlackTree dupes x t of
     RedBlackLeft x' left right      -> IncHeight $ Black $ BlackNode x' (Red left) (Black right)
     RedBlackRight x' left right     -> IncHeight $ Black $ BlackNode x' (Black left) (Red right)
 
--- | Inserts an element into the RedBlack Tree
---
-insertRB :: (BlackNode b, Ord a) => a -> RedBlackTree b a -> PossibleHeightIncResult b a
-insertRB 
+memberRB :: (BlackNode b, Ord a) => a -> RedBlackTree b a -> Bool
+memberRB x (Black blackNode) = memberBlack x blackNode
+memberRB x (Red (RedNode y left right))
+    | x == y    = True
+    | x < y     = memberBlack x left
+    | otherwise = memberBlack x right
 
 -- Helper Functions
 
@@ -114,7 +125,7 @@ insertRB
 blackHeightRed :: (BlackNode b) => RedNode b a -> Int
 blackHeightRed (RedNode _ l _) = blackHeight l
 
--- | returns the black heaight for a redblack tree
+-- | returns the black height for a redblack tree
 --
 treeBlackHeight :: (BlackNode b) => RedBlackTree b a -> Int
 treeBlackHeight (Black n)   = blackHeight n
@@ -178,4 +189,4 @@ rbalance x a (RedBlackRight y b (RedNode z c d))    = Red $ RedNode y (BlackNode
 --
 colourRootBlack :: RedBlackTree b a -> PossibleHeightIncResult b a
 colourRootBlack t@(Black {})                    = SameHeight t
-colourRootBlack (Red (RedNode x left right))    = IncHeight $ Black $ ((BlackNode x) `on` Black) left right
+colourRootBlack (Red (RedNode x left right))    = IncHeight $ Black $ (BlackNode x `on` Black) left right
