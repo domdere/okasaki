@@ -104,8 +104,8 @@ insertRB dupes x t = case insRedBlackTree dupes x t of
 
 -- | Inserts an element into the RedBlack Tree
 --
---insertRB :: (Ord a)
---insertRB
+insertRB :: (BlackNode b, Ord a) => a -> RedBlackTree b a -> PossibleHeightIncResult b a
+insertRB 
 
 -- Helper Functions
 
