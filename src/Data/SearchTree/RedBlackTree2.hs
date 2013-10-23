@@ -123,9 +123,17 @@ instance (BlackNode a) => BlackNode (BlackNonLeaf a) where
         | x < y     = memberRB x left
         | otherwise = memberRB x right
 
-    removeMinBlack (BlackNode x (Black left) right) = (min, GoodBlack $ balanceBlack x newLeft right)
+    removeMinBlack (BlackNode x (Black left) right) = (minElt, wrapResult $ balanceBlack x newLeft right)
         where
-            (min, newLeft) = removeMinBlack left
+            wrapResult :: PossibleHeightDecResult b a-> RemoveMinBlackResult b a
+            wrapResult (NoDec t)        = GoodBlack t
+            wrapResult (DecHeight t)    = BadBlack t
+
+            (minElt, newLeft)           = removeMinBlack left
+
+    removeMinBlack (BlackNode x (Red (RedNode y sl sr)) right) = (minElt, GoodBlack $ BlackNode x (balanceRed y newSl sr) right)
+        where
+            (minElt, newSl) = removeMinBlack sl
 
 -- Tree Functions
 
@@ -210,12 +218,25 @@ rbalance x a (RedBlackLeft z (RedNode y b c) d)     = Red $ RedNode y (BlackNode
 rbalance x a (RedBlackRight y b (RedNode z c d))    = Red $ RedNode y (BlackNode x a (Black b)) (BlackNode z (Black c) (Black d))
 
 -- | In some cases when deleting elements from a Red Black Tree, the black height invariant (#2)
--- can get broken, this function attempts the rebalance it
+-- can get broken, this function attempts the rebalance it, for use when you are at a black node and have just run removeMin
+-- on the left child tree.
 --
-balanceBlack :: (BlackNode b) =>  a -> RemoveMinBlackResult b a-> RedOrBlackNode (BlackNonLeaf b) a-> BlackNonLeaf (BlackNonLeaf b) a
-balanceBlack x (GoodBlack left) right = BlackNode x (Black left) right
--- This also has to be done in balanceRed
-balanceBlack x (BadBlack n) s@(Red (RedNode y sl sr)) = BlackNode y (Red $ RedNode x n sl) (Black sr)
+balanceBlack :: (BlackNode b) =>  a -> RemoveMinBlackResult b a-> RedOrBlackNode (BlackNonLeaf b) a-> PossibleHeightDecResult (BlackNonLeaf b) a
+balanceBlack x (GoodBlack left) right = NoDec $ BlackNode x (Black left) right
+balanceBlack x n (Red (RedNode y sl sr)) = NoDec $ BlackNode y (balanceRed x n sl) (Black sr)
+balanceBlack x (BadBlack n) (Black (BlackNode y (Black sl) (Black sr))) = DecHeight $ BlackNode x (Black n) (Red $ RedNode y sl sr)
+balanceBlack x n (Black (BlackNode y (Red (RedNode z sll slr)) (Black sr))) = balanceBlack x n $ Black $ BlackNode z (Black sll) (Red $ RedNode y slr sr)
+balanceBlack x (BadBlack n) (Black (BlackNode y sl (Red (RedNode z srl srr)))) = NoDec $ BlackNode y (Black $ BlackNode x (Black n) sl) (Black $ BlackNode z (Black srl) (Black srr))
+
+-- | In some cases when deleting elements from a Red Black Tree, the black height invariant (#2)
+-- can get broken, this function attempts the rebalance it for use when you are at a red node and have just run removeMin on the
+-- left child tree
+--
+balanceRed :: (BlackNode b) =>  a -> RemoveMinBlackResult b a-> (BlackNonLeaf b) a-> RedOrBlackNode (BlackNonLeaf b) a
+balanceRed x (GoodBlack left) right = Red $ RedNode x left right
+balanceRed x (BadBlack n) (BlackNode y (Black sl) (Black sr)) = Black $ BlackNode x (Black n) $ Red $ RedNode y sl sr
+balanceRed x n (BlackNode y (Red (RedNode z sll slr)) (Black sr)) = balanceRed x n $ BlackNode z (Black sll) (Red $ RedNode y slr sr)
+balanceRed x (BadBlack n) (BlackNode y sl (Red (RedNode z srl srr))) = Red $ RedNode y (BlackNode x (Black n) sl) (BlackNode z (Black srl) (Black srr))
 
 -- | Colours the root Black if necessary, potentially increasing the black height of the tree.
 --
