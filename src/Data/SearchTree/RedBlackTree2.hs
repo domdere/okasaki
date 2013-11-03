@@ -60,84 +60,67 @@ data BalanceState = Good | Broken deriving (Show, Eq)
 
 --deriving instance (Show a) => Show (NodeFocus b c h a)
 
-data ZipperContext :: BalanceState -> Height -> * -> * where
-    GoodRedParentContext :: RBNode Black h a -> Direction -> RBNode Red h a -> RBNode Black h a -> ZipperContext Good h a
-    BrokenRedParentRedChildContext :: RBNode Red h a -> Direction -> RBNode Red h a -> RBNode Black h a -> ZipperContext Broken h a
-    BrokenRedParentHeightContext :: RBNode Black h a -> Direction -> RBNode Red h a -> RBNode Black (Inc h) a -> ZipperContext Broken (Inc h) a
-    GoodBlackParentContext :: RBNode c h a -> Direction -> RBNode Black (Inc h) a -> RBNode cs h a -> ZipperContext Good h a
-    BrokenBlackParentContext :: RBNode c h a -> Direction -> RBNode Black (Inc (Inc h)) a -> RBNode cs (Inc h) a -> ZipperContext Broken (Inc h) a
+data ZipperCrumb :: Colour -> Height -> * -> * where
+    BlackCrumb :: Direction -> a -> RBNode cs h a -> ZipperCrumb Black (Inc h) a
+    RedCrumb :: Direction -> a -> RBNode Black h a -> ZipperCrumb Red h a
 
-deriving instance (Show a) => Show (ZipperContext b h a)
+deriving instance (Show a) => Show (ZipperCrumb c h a)
 
-data ZipperContextList :: BalanceState -> * -> * where
-    Top :: RBNode Black h a -> ZipperContextList Good a
-    (:.) :: ZipperContext b h a -> ZipperContextList Good a -> ZipperContextList b a
+data ZipperCrumbList :: Colour -> Height -> * -> * where
+    Nil :: ZipperCrumbList Black h a
+    (:.) :: ZipperCrumb Red h a -> ZipperCrumbList Black h a -> ZipperCrumbList Red h a
+    (::.) :: ZipperCrumb Black (Inc h) a -> ZipperCrumbList cp (Inc h) a -> ZipperCrumbList Black h a
 
-deriving instance (Show a) => Show (ZipperContextList b a)
+deriving instance (Show a) => Show (ZipperCrumbList b h a)
 
-data RBZipper :: BalanceState -> * -> * where
-    RBZipper :: ZipperContextList b a -> RBZipper b a
+data RBZipper a  where
+    RBZipperRed :: RBNode Red h a -> ZipperCrumbList Black h a -> RBZipper a
+    RBZipperBlack :: RBNode Black h a -> ZipperCrumbList c h a -> RBZipper a
 
-deriving instance (Show a) => Show (RBZipper b a)
-
-data RBZipperResult b a =
-        New (RBZipper b a)
-    |   Same (RBZipper b a) deriving (Show)
-
-data RBRemoveMinResult a =
-        Balanced (RBZipper Good a)
-    |   Unbalanced (RBZipper Broken a) deriving (Show)
+deriving instance (Show a) => Show (RBZipper a)
 
 -- Zipper Functions
 
-toZipper :: RBTree a -> RBZipper Good a
-toZipper (RBTree t) = RBZipper (Top t)
+toZipper :: RBTree a -> RBZipper a
+toZipper (RBTree node) = RBZipperBlack node Nil
 
-goLeft :: RBZipper Good a -> RBZipperResult Good a
-goLeft z@(RBZipper (Top Leaf))                                                      = Same z
-goLeft z@(RBZipper ((GoodBlackParentContext Leaf _ _ _) :. _))                      = Same z
-goLeft z@(RBZipper ((GoodRedParentContext Leaf _ _ _) :. _))                        = Same z
-goLeft (RBZipper l@(Top p@(BlackNode _ left s)))                                    = New $ RBZipper $ (GoodBlackParentContext left L p s) :. l
-goLeft (RBZipper l@((GoodBlackParentContext p@(BlackNode _ left s) _ _ _) :. _))    = New $ RBZipper $ (GoodBlackParentContext left L p s) :. l
-goLeft (RBZipper l@((GoodBlackParentContext p@(RedNode _ left s) _ _ _) :. _))      = New $ RBZipper $ (GoodRedParentContext left L p s) :. l
-goLeft (RBZipper l@((GoodRedParentContext p@(BlackNode _ left s) _ _ _) :. _))      = New $ RBZipper $ (GoodBlackParentContext left L p s) :. l
+goLeft :: RBZipper a -> RBZipper a
+goLeft z@(RBZipperBlack Leaf _)                                     = z
+goLeft (RBZipperBlack (BlackNode x left@(Leaf) right) l)            = RBZipperBlack left ((BlackCrumb L x right) ::. l)
+goLeft (RBZipperBlack (BlackNode x left@(BlackNode {}) right) l)    = RBZipperBlack left ((BlackCrumb L x right) ::. l)
+goLeft (RBZipperBlack (BlackNode x left@(RedNode {}) right) l)      = RBZipperRed left ((BlackCrumb L x right) ::. l)
+goLeft (RBZipperRed (RedNode x left right) l)                       = RBZipperBlack left ((RedCrumb L x right) :. l)
 
-goRight :: RBZipper Good a -> RBZipperResult Good a
-goRight z@(RBZipper (Top Leaf))                                                     = Same z
-goRight z@(RBZipper ((GoodBlackParentContext Leaf _ _ _) :. _))                     = Same z
-goRight z@(RBZipper ((GoodRedParentContext Leaf _ _ _) :. _))                       = Same z
-goRight (RBZipper l@(Top p@(BlackNode _ s right)))                                  = New $ RBZipper $ (GoodBlackParentContext right R p s) :. l
-goRight (RBZipper l@((GoodBlackParentContext p@(BlackNode _ s right) _ _ _) :. _))  = New $ RBZipper $ (GoodBlackParentContext right R p s) :. l
-goRight (RBZipper l@((GoodBlackParentContext p@(RedNode _ s right) _ _ _) :. _))    = New $ RBZipper $ (GoodRedParentContext right R p s) :. l
-goRight (RBZipper l@((GoodRedParentContext p@(BlackNode _ s right) _ _ _) :. _))    = New $ RBZipper $ (GoodBlackParentContext right R p s) :. l
+goRight :: RBZipper a -> RBZipper a
+goRight z@(RBZipperBlack Leaf _)                                    = z
+goRight (RBZipperBlack (BlackNode x left right@(Leaf)) l)           = RBZipperBlack right ((BlackCrumb R x left) ::. l)
+goRight (RBZipperBlack (BlackNode x left right@(BlackNode {})) l)   = RBZipperBlack right ((BlackCrumb R x left) ::. l)
+goRight (RBZipperBlack (BlackNode x left right@(RedNode {})) l)     = RBZipperRed right ((BlackCrumb R x left) ::. l)
+goRight (RBZipperRed (RedNode x left right) l)                      = RBZipperBlack right ((RedCrumb R x left) :. l)
 
-goUp :: RBZipper Good a -> RBZipperResult Good a
-goUp z@(RBZipper (Top {}))  = Same z
-goUp (RBZipper (_ :. l))    = New $ RBZipper l
+goUp :: RBZipper a -> RBZipper a
+goUp z@(RBZipperBlack _ Nil)                        = z
+goUp z@(RBZipperRed _ Nil)                          = z
+goUp (RBZipperBlack n ((BlackCrumb L x s) ::. l))   = RBZipperBlack (BlackNode x n s) l
+goUp (RBZipperBlack n ((BlackCrumb R x s) ::. l))   = RBZipperBlack (BlackNode x s n) l
+goUp (RBZipperRed n ((BlackCrumb L x s) ::. l))     = RBZipperBlack (BlackNode x n s) l
+goUp (RBZipperRed n ((BlackCrumb R x s) ::. l))     = RBZipperBlack (BlackNode x s n) l
+goUp (RBZipperBlack n ((RedCrumb L x s) :. l))      = RBZipperRed (RedNode x n s) l
+goUp (RBZipperBlack n ((RedCrumb R x s) :. l))      = RBZipperRed (RedNode x s n) l
 
-unwrapResult :: RBZipperResult b a -> RBZipper b a
-unwrapResult (Same t)   = t
-unwrapResult (New t)    = t
+getNodeValue :: RBZipper a -> Maybe a
+getNodeValue (RBZipperBlack Leaf _)                 = Nothing
+getNodeValue (RBZipperBlack (BlackNode y _ _) _)    = Just y
+getNodeValue (RBZipperRed (RedNode y _ _) _)        = Just y
 
-zipSearch :: (Ord a) => a -> RBZipper Good a -> RBZipper Good a
-zipSearch _ z@(RBZipper (Top Leaf))                                    = z
-zipSearch _ z@(RBZipper ((GoodBlackParentContext Leaf _ _ _) :. _))    = z
-zipSearch _ z@(RBZipper ((GoodRedParentContext Leaf _ _ _) :. _))      = z
-zipSearch x z@(RBZipper (Top (BlackNode y _ _)))
-    | x == y    = z
-    | otherwise = zipSearch x . unwrapResult $ (if x < y then goLeft else goRight) z
-zipSearch x z@(RBZipper ((GoodBlackParentContext (BlackNode y _ _) _ _ _) :. _))
-    | x == y = z
-    | otherwise = zipSearch x . unwrapResult $ (if x < y then goLeft else goRight) z
-zipSearch x z@(RBZipper ((GoodBlackParentContext (RedNode y _ _) _ _ _) :. _))
-    | x == y = z
-    | otherwise = zipSearch x . unwrapResult $ (if x < y then goLeft else goRight) z
-zipSearch x z@(RBZipper ((GoodRedParentContext (BlackNode y _ _) _ _ _) :. _))
-    | x == y = z
-    | otherwise = zipSearch x . unwrapResult $ (if x < y then goLeft else goRight) z
+goDirection :: Direction -> RBZipper a -> RBZipper a
+goDirection L = goLeft
+goDirection R = goRight
 
-zipRemoveMin :: RBZipper Good a -> Maybe (a, RBRemoveMinResult a)
-zipRemoveMin (RBZipper (Top Leaf)) = Nothing
-zipRemoveMin (RBZipper ((GoodBlackParentContext Leaf _ _ _) :. _)) = Nothing
-zipRemoveMin (RBZipper ((GoodRedParentContext Leaf _ _ _) :. _)) = Nothing
---zipRemoveMin (RBZipper ((GoodRedParentContext (BlackNode x Leaf s@(RedNode y sl sr)) _ _ _) :. l)) = Just (x, Unbalanced $ RBZipper $ BrokenBlackParentContext Leaf)
+assignDirection :: (Ord a) => a -> a -> Direction
+assignDirection x y = if x < y then L else R
+
+zipperSearch :: (Ord a) => a -> RBZipper a -> RBZipper a
+zipperSearch x z = case getNodeValue z of
+    Nothing -> z
+    Just y  -> zipperSearch x $ goDirection (assignDirection x y) z
