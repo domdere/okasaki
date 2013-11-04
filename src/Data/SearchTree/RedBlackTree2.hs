@@ -79,6 +79,11 @@ data RBZipper a  where
 
 deriving instance (Show a) => Show (RBZipper a)
 
+data FindMinResult a where
+    LeafResult :: ZipperCrumbList c Zero a -> FindMinResult a
+    MinBlackResult :: a -> RBNode cr Zero a -> ZipperCrumbList c (Inc Zero) a -> FindMinResult a
+    MinRedResult :: RBNode Red Zero a -> ZipperCrumbList Black Zero a -> FindMinResult a
+
 -- Zipper Functions
 
 toZipper :: RBTree a -> RBZipper a
@@ -124,3 +129,23 @@ zipperSearch :: (Ord a) => a -> RBZipper a -> RBZipper a
 zipperSearch x z = case getNodeValue z of
     Nothing -> z
     Just y  -> zipperSearch x $ goDirection (assignDirection x y) z
+
+findMin :: RBZipper a -> FindMinResult a
+findMin (RBZipperBlack Leaf l)                      = LeafResult l
+findMin (RBZipperBlack (BlackNode x Leaf right) l)  = MinBlackResult x right l
+findMin (RBZipperRed n@(RedNode _ Leaf _) l)        = MinRedResult n l
+findMin z                                           = (findMin . goLeft) z
+
+removeMin :: RBZipper a -> RBZipper a
+removeMin z = case findMin z of
+    LeafResult _ -> z
+    MinRedResult (RedNode _ Leaf Leaf) l -> RBZipperBlack Leaf l
+    MinBlackResult _ (RedNode x left right) l -> RBZipperBlack (BlackNode x left right) l
+    MinBlackResult _ Leaf l -> balanceBlackHeight Leaf l
+
+balanceBlackHeight :: RBNode Black h a -> ZipperCrumbList c (Inc h) a -> RBZipper a
+balanceBlackHeight newRoot Nil = RBZipperBlack newRoot Nil
+balanceBlackHeight n ((BlackCrumb direction px s@(RedNode {})) ::. l) = removalBalanceCase2 direction px n s l
+
+removalBalanceCase2 :: Direction -> a -> RBNode Black h a -> RBNode Red (Inc h) a -> ZipperCrumbList c (Inc h) a -> RBZipper a
+removalBalanceCase2 = error "TODO:"
