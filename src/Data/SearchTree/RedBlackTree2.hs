@@ -113,10 +113,20 @@ goUp (RBZipperRed n ((BlackCrumb R x s) ::. l))     = RBZipperBlack (BlackNode x
 goUp (RBZipperBlack n ((RedCrumb L x s) :. l))      = RBZipperRed (RedNode x n s) l
 goUp (RBZipperBlack n ((RedCrumb R x s) :. l))      = RBZipperRed (RedNode x s n) l
 
+unzipTree :: RBZipper a -> RBTree a
+unzipTree (RBZipperRed redRoot Nil) = RBTree $ paintRedNodeBlack redRoot
+unzipTree (RBZipperBlack root Nil) = RBTree root
+unzipTree z = (unzipTree . goUp) z
+
 getNodeValue :: RBZipper a -> Maybe a
 getNodeValue (RBZipperBlack Leaf _)                 = Nothing
 getNodeValue (RBZipperBlack (BlackNode y _ _) _)    = Just y
 getNodeValue (RBZipperRed (RedNode y _ _) _)        = Just y
+
+setNodeValue :: a -> RBZipper a -> RBZipper a
+setNodeValue _ z@(RBZipperBlack Leaf _) = z
+setNodeValue x (RBZipperBlack (BlackNode _ l r) crumbs) = RBZipperBlack (BlackNode x l r) crumbs
+setNodeValue x (RBZipperRed (RedNode _ l r) crumbs) = RBZipperRed (RedNode x l r) crumbs
 
 goDirection :: Direction -> RBZipper a -> RBZipper a
 goDirection L = goLeft
@@ -143,9 +153,74 @@ removeMin z = case findMin z of
     MinBlackResult _ (RedNode x left right) l -> RBZipperBlack (BlackNode x left right) l
     MinBlackResult _ Leaf l -> balanceBlackHeight Leaf l
 
+paintRedNodeBlack :: RBNode Red h a -> RBNode Black (Inc h) a
+paintRedNodeBlack (RedNode x l r) = BlackNode x l r
+
 balanceBlackHeight :: RBNode Black h a -> ZipperCrumbList c (Inc h) a -> RBZipper a
 balanceBlackHeight newRoot Nil = RBZipperBlack newRoot Nil
-balanceBlackHeight n ((BlackCrumb direction px s@(RedNode {})) ::. l) = removalBalanceCase2 direction px n s l
+-- balanceBlackHeight _ ((BlackCrumb R _ Leaf) ::. _)
+--balanceBlackHeight _ ((BlackCrumb R _ (BlackNode _ Leaf _)) ::. _) = error "Inaccessible"
+--balanceBlackHeight _ ((BlackCrumb R _ (BlackNode _ (BlackNode _ _ _) Leaf)) ::. _) = error "Inaccessible"
+balanceBlackHeight n ((BlackCrumb direction px s@(RedNode {})) ::. l)   = removalBalanceCase2 direction px n s l
+balanceBlackHeight n ((BlackCrumb direction px (BlackNode sx sl@(BlackNode {}) sr@(BlackNode {}))) ::. l)   = removalBalanceCase3 direction px n sx sl sr l
+balanceBlackHeight n ((BlackCrumb direction px (BlackNode sx Leaf Leaf)) ::. l)                             = removalBalanceCase3 direction px n sx Leaf Leaf l
+balanceBlackHeight n ((RedCrumb direction px (BlackNode sx sl@(BlackNode {}) sr@(BlackNode {}))) :. l)      = removalBalanceCase4 direction px n sx sl sr l
+balanceBlackHeight n ((RedCrumb R px (BlackNode sx sl@(BlackNode {}) sr@(RedNode {}))) :. l)                = balanceBlackHeight n ((RedCrumb R px (removalBalanceCase5Right sx sl sr)) :. l)
+balanceBlackHeight n ((RedCrumb R px (BlackNode sx Leaf sr@(RedNode {}))) :. l)                             = balanceBlackHeight n ((RedCrumb R px (removalBalanceCase5Right sx Leaf sr)) :. l)
+balanceBlackHeight n ((RedCrumb L px (BlackNode sx sl@(RedNode {}) Leaf)) :. l)                             = balanceBlackHeight n ((RedCrumb L px (removalBalanceCase5Left sx sl Leaf)) :. l)
+balanceBlackHeight n ((BlackCrumb R px (BlackNode sx sl@(BlackNode {}) sr@(RedNode {}))) ::. l)             = balanceBlackHeight n ((BlackCrumb R px (removalBalanceCase5Right sx sl sr)) ::. l)
+balanceBlackHeight n ((BlackCrumb R px (BlackNode sx Leaf sr@(RedNode {}))) ::. l)                          = balanceBlackHeight n ((BlackCrumb R px (removalBalanceCase5Right sx Leaf sr)) ::. l)
+balanceBlackHeight n ((BlackCrumb L px (BlackNode sx sl@(RedNode {}) sr@(BlackNode {}))) ::. l)             = balanceBlackHeight n ((BlackCrumb L px (removalBalanceCase5Left sx sl sr)) ::. l)
+balanceBlackHeight n ((BlackCrumb L px (BlackNode sx sl@(RedNode {}) Leaf)) ::. l)                          = balanceBlackHeight n ((BlackCrumb L px (removalBalanceCase5Left sx sl Leaf)) ::. l)
+balanceBlackHeight n ((BlackCrumb R px (BlackNode sx sl@(RedNode {}) sr)) ::. l)                            = removalBalanceCase6BlackRight px n sx sl sr l
+balanceBlackHeight n ((BlackCrumb L px (BlackNode sx sl sr@(RedNode {}))) ::. l)                            = removalBalanceCase6BlackLeft px n sx sl sr l
+balanceBlackHeight n ((RedCrumb R px (BlackNode sx sl@(RedNode {}) sr)) :. l)                               = removalBalanceCase6RedRight px n sx sl sr l
+balanceBlackHeight n ((RedCrumb L px (BlackNode sx sl sr@(RedNode {}))) :. l)                               = removalBalanceCase6RedLeft px n sx sl sr l
+-- this is dirty but needs to be here, otherwise GHC warns about the following patterns not being handled, which are technically
+-- impossible to construct, attempting to match the patterns given as is results in compiler errors (i.e the compiler should be able to
+-- prove that the missing patterns are impossible but it doesnt (GHC 7.6.3))
+-- hence the complete set of plausible patterns has actually been handled.
+--      _ ((BlackCrumb R _ Leaf) ::. _)
+--      _ ((BlackCrumb R _ (BlackNode _ (BlackNode _ _ _) Leaf)) ::. _)
+--      _ ((BlackCrumb R _ (BlackNode _ Leaf (BlackNode _ _ _))) ::. _)
+--      _ ((BlackCrumb L _ Leaf) ::. _)
+--      _ ((BlackCrumb L _ (BlackNode _ (BlackNode _ _ _) Leaf)) ::. _)
+--      _ ((BlackCrumb L _ (BlackNode _ Leaf (BlackNode _ _ _))) ::. _)
+--
+-- Seems to be a long outstanding GHC+GADTs bug, theres a ticket here:
+-- http://ghc.haskell.org/trac/ghc/ticket/595
+-- or more specifically this one:
+-- http://ghc.haskell.org/trac/ghc/ticket/3927
+-- due to be fixed in 7.8.1 (currently)
+balanceBlackHeight _ _ = undefined
 
-removalBalanceCase2 :: Direction -> a -> RBNode Black h a -> RBNode Red (Inc h) a -> ZipperCrumbList c (Inc h) a -> RBZipper a
-removalBalanceCase2 = error "TODO:"
+removalBalanceCase2 :: Direction -> a -> RBNode Black h a -> RBNode Red (Inc h) a -> ZipperCrumbList c (Inc (Inc h)) a -> RBZipper a
+removalBalanceCase2 R px n (RedNode sx sl sr) crumbs    = balanceBlackHeight n ((RedCrumb R px sr) :. ((BlackCrumb R sx sl) ::. crumbs))
+removalBalanceCase2 L px n (RedNode sx sl sr) crumbs    = balanceBlackHeight n ((RedCrumb L px sl) :. ((BlackCrumb L sx sr) ::. crumbs))
+
+removalBalanceCase3 :: Direction -> a -> RBNode Black h a -> a -> RBNode Black h a -> RBNode Black h a -> ZipperCrumbList c (Inc (Inc h)) a -> RBZipper a
+removalBalanceCase3 R px n sx sl sr crumbs  = goRight $ balanceBlackHeight (BlackNode px (RedNode sx sl sr) n) crumbs
+removalBalanceCase3 L px n sx sl sr crumbs  = goLeft $ balanceBlackHeight (BlackNode px n (RedNode sx sl sr)) crumbs
+
+removalBalanceCase4 :: Direction -> a -> RBNode Black h a -> a -> RBNode Black h a -> RBNode Black h a -> ZipperCrumbList c (Inc h) a -> RBZipper a
+removalBalanceCase4 R px n sx sl sr crumbs = goRight $ RBZipperBlack (BlackNode px (RedNode sx sl sr) n) crumbs
+removalBalanceCase4 L px n sx sl sr crumbs = goLeft $ RBZipperBlack (BlackNode px n (RedNode sx sl sr)) crumbs
+
+removalBalanceCase5Right :: a -> RBNode Black h a -> RBNode Red h a -> RBNode Black (Inc h) a
+removalBalanceCase5Right sx sl (RedNode srx srl srr) = BlackNode srx (RedNode sx sl srl) srr
+
+removalBalanceCase5Left :: a -> RBNode Red h a -> RBNode Black h a -> RBNode Black (Inc h) a
+removalBalanceCase5Left sx (RedNode slx sll slr) sr = BlackNode slx sll (RedNode sx slr sr)
+
+removalBalanceCase6BlackRight :: a -> RBNode Black h a -> a -> RBNode Red h a -> RBNode csr h a -> ZipperCrumbList c (Inc (Inc h)) a -> RBZipper a
+removalBalanceCase6BlackRight px n sx sl sr crumbs = goRight $ goRight $ RBZipperBlack (BlackNode sx (paintRedNodeBlack sl) (BlackNode px sr n)) crumbs
+
+removalBalanceCase6BlackLeft :: a -> RBNode Black h a -> a -> RBNode csl h a -> RBNode Red h a -> ZipperCrumbList c (Inc (Inc h)) a -> RBZipper a
+removalBalanceCase6BlackLeft px n sx sl sr crumbs = goLeft $ goLeft $ RBZipperBlack (BlackNode sx (BlackNode px n sl) (paintRedNodeBlack sr)) crumbs
+
+removalBalanceCase6RedRight :: a -> RBNode Black h a -> a -> RBNode Red h a -> RBNode csr h a -> ZipperCrumbList Black (Inc h) a -> RBZipper a
+removalBalanceCase6RedRight px n sx sl sr crumbs = goRight $ goRight $ RBZipperRed (RedNode sx (paintRedNodeBlack sl) (BlackNode px sr n)) crumbs
+
+removalBalanceCase6RedLeft :: a -> RBNode Black h a -> a -> RBNode csl h a -> RBNode Red h a -> ZipperCrumbList Black (Inc h) a -> RBZipper a
+removalBalanceCase6RedLeft px n sx sl sr crumbs = goLeft $ goLeft $ RBZipperRed (RedNode sx (BlackNode px n sl) (paintRedNodeBlack sr)) crumbs
+
