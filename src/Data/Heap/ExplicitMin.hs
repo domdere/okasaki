@@ -24,7 +24,7 @@ module Data.Heap.ExplicitMin where
 
 import Data.Heap
 
-import Control.Monad
+import Control.Applicative
 
 -- | Exercise 3.7:
 -- Implement a functor that takes in any implementation of a Heap
@@ -39,7 +39,7 @@ data ExplicitMin h a =
     |   ExplicitMin a (h a) deriving (Show, Eq)
 
 instance (Heap h) => Heap (ExplicitMin h) where
-    singletonHeap = ExplicitMin `ap` singletonHeap
+    singletonHeap = ExplicitMin <*> singletonHeap
 
     empty = EmptyExplicitMin
 
