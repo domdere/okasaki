@@ -1,4 +1,4 @@
-# Okasaki [![Build Status](https://travis-ci.org/domdere/okasaki.png)](https://travis-ci.org/domdere/okasaki)
+# Okasaki
 
 
 My Code-Along during my read through of Chris Okasaki's *Purely Functional Data Structures* ( *PFDS* )
