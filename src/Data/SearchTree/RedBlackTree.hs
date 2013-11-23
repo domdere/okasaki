@@ -2,6 +2,8 @@ module Data.SearchTree.RedBlackTree where
 
 import Data.Function
 
+-- | WIP: I havent found a nice way to code up this data structure yet.
+
 -- | From Chapter 3.3 of Purely Functional Data Structures
 -- "A Red-Black Tree is a binary search tree in which every node is coloured
 -- either Red or Black."

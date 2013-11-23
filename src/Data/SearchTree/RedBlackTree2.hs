@@ -5,6 +5,13 @@ import Data.SearchTree
 
 import Data.Function
 
+-- | WIP: I've been looking at Red Black trees for a while now, trying to figure out
+-- how to best write up the type so that it enforces the type invariant and
+-- is also elegant to code.  I'm confident the code below works well to enforce the
+-- invariants with the Type System, however as you can tell from looking at
+-- `balanceBlackHeight`, it doesnt really have the elegance yet.  I'll come back to this
+-- later with a fresh perspective.
+
 -- | From Chapter 3.3 of Purely Functional Data Structures
 -- "A Red-Black Tree is a binary search tree in which every node is coloured
 -- either Red or Black."
@@ -79,15 +86,31 @@ data RBZipper a  where
 
 deriving instance (Show a) => Show (RBZipper a)
 
-data FindMinResult a where
-    LeafResult :: ZipperCrumbList c Zero a -> FindMinResult a
-    MinBlackResult :: a -> RBNode cr Zero a -> ZipperCrumbList c (Inc Zero) a -> FindMinResult a
-    MinRedResult :: RBNode Red Zero a -> ZipperCrumbList Black Zero a -> FindMinResult a
+-- | This data type covers all the result of search functions that return either
+-- Leaf nodes or nodes with leaf children.
+data FindLeafResult a where
+    LeafResult :: ZipperCrumbList c Zero a -> FindLeafResult a
+    BlackResult :: a -> RBNode cr Zero a -> ZipperCrumbList c (Inc Zero) a -> FindLeafResult a
+    RedResult :: RBNode Red Zero a -> ZipperCrumbList Black Zero a -> FindLeafResult a
+
+-- SearchTree Functions
+
+-- removedFromTree' :: (Ord a) => a -> RBTree a -> RBTree a
+
+-- Helper Functions
+
+isLeaf :: RBNode c h a -> Bool
+isLeaf Leaf = True
+isLeaf _    = False
 
 -- Zipper Functions
 
 toZipper :: RBTree a -> RBZipper a
 toZipper (RBTree node) = RBZipperBlack node Nil
+
+isAtLeaf :: RBZipper a -> Bool
+isAtLeaf (RBZipperRed {})       = False
+isAtLeaf (RBZipperBlack n _)    = isLeaf n
 
 goLeft :: RBZipper a -> RBZipper a
 goLeft z@(RBZipperBlack Leaf _)                                     = z
@@ -128,6 +151,10 @@ setNodeValue _ z@(RBZipperBlack Leaf _) = z
 setNodeValue x (RBZipperBlack (BlackNode _ l r) crumbs) = RBZipperBlack (BlackNode x l r) crumbs
 setNodeValue x (RBZipperRed (RedNode _ l r) crumbs) = RBZipperRed (RedNode x l r) crumbs
 
+-- | Finds the given element and removes it from the tree, replacing it with the min
+-- element of the right child
+searchDownAndRemove :: (Ord a) => a -> RBZipper a -> RBZipper a
+
 goDirection :: Direction -> RBZipper a -> RBZipper a
 goDirection L = goLeft
 goDirection R = goRight
@@ -140,18 +167,34 @@ zipperSearch x z = case getNodeValue z of
     Nothing -> z
     Just y  -> zipperSearch x $ goDirection (assignDirection x y) z
 
-findMin :: RBZipper a -> FindMinResult a
+findMin :: RBZipper a -> FindLeafResult a
 findMin (RBZipperBlack Leaf l)                      = LeafResult l
-findMin (RBZipperBlack (BlackNode x Leaf right) l)  = MinBlackResult x right l
-findMin (RBZipperRed n@(RedNode _ Leaf _) l)        = MinRedResult n l
+findMin (RBZipperBlack (BlackNode x Leaf right) l)  = BlackResult x right l
+findMin (RBZipperRed n@(RedNode _ Leaf _) l)        = RedResult n l
 findMin z                                           = (findMin . goLeft) z
 
-removeMin :: RBZipper a -> RBZipper a
-removeMin z = case findMin z of
+findMax :: RBZipper a -> FindLeafResult a
+findMax (RBZipperBlack Leaf l)                      = LeafResult l
+findMax (RBZipperBlack (BlackNode x left Leaf) l)   = BlackResult x left l
+findMax (RBZipperRed n@(RedNode _ _ Leaf) l)        = RedResult n l
+findMax z                                           = (findMax . goRight) z
+
+findLeafAndRemove :: (RBZipper a -> FindLeafResult a) -> RBZipper a -> RBZipper a
+findLeafAndRemove findFunction z = case findFunction z of
     LeafResult _ -> z
-    MinRedResult (RedNode _ Leaf Leaf) l -> RBZipperBlack Leaf l
-    MinBlackResult _ (RedNode x left right) l -> RBZipperBlack (BlackNode x left right) l
-    MinBlackResult _ Leaf l -> balanceBlackHeight Leaf l
+    RedResult (RedNode _ Leaf Leaf) l -> RBZipperBlack Leaf l
+    BlackResult _ (RedNode x left right) l -> RBZipperBlack (BlackNode x left right) l
+    BlackResult _ Leaf l -> balanceBlackHeight Leaf l
+
+findAndRemove :: (Ord a) => (RBZipper a -> RBZipper a) -> RBZipper a -> RBZipper a
+findAndRemove findFunc = removeFocus . findFunc
+    where
+        findReplacement :: RBZipper a -> FindLeafResult a
+        findReplacement z = if (goRight z) `isAtLeaf` then (findMax . goLeft) z else (findMin . goRight) z
+        removeFocus :: RBZipper a -> RBZipper a
+        removeFocus z@(RBZipperBlack Leaf _) = z
+        removeFocus z = case findReplacement z of
+            LeafResult _ -> z
 
 paintRedNodeBlack :: RBNode Red h a -> RBNode Black (Inc h) a
 paintRedNodeBlack (RedNode x l r) = BlackNode x l r
