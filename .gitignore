@@ -12,6 +12,9 @@
 
 # potential build files:
 data/
+*.buildinfo
 
 #cabal build directory:
+cabal-dev/
+sandbox/
 dist/
