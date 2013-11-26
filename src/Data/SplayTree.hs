@@ -38,7 +38,7 @@ data SplayTree a =
         Leaf
     |   Node a (SplayTree a) (SplayTree a) deriving (Show, Eq)
 
-data Direction = Left | Right deriving (Show, Eq)
+data Direction = SLeft | SRight deriving (Show, Eq)
 
 data SplayTreeZipperCrumb a = SplayTreeZipperCrumb
     {   getDirection    :: Direction
@@ -62,3 +62,15 @@ instance Functor SplayTreeZipperCrumb where
 
 instance Functor SplayTreeZipper where
     fmap f (SplayTreeZipper focus crumbs) = SplayTreeZipper (f `fmap` focus) (fmap (fmap f) crumbs)
+
+-- Zipper functions
+
+(<.) :: SplayTreeZipperCrumb a -> SplayTree a -> SplayTree a
+(SplayTreeZipperCrumb SLeft x r) <. t   = Node x t r
+(SplayTreeZipperCrumb SRight x l) <. t  = Node x l t
+
+(<+) :: [SplayTreeZipperCrumb a] -> SplayTree a -> SplayTree a
+ss <+ t = foldr (<.) t ss
+
+unzip :: SplayTreeZipper a -> SplayTree a
+unzip (SplayTreeZipper t ss) = ss <+ t
