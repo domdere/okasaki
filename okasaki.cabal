@@ -29,6 +29,7 @@ library
                         , HUnit
                         , containers
                         , array
+                        , comonad
 
     ghc-options:        -Wall
                         -fno-warn-unused-imports
