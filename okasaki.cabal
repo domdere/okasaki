@@ -43,7 +43,7 @@ library
                         , Data.Heap.Leftist
                         , Data.Heap.Leftist.HeightBiased
                         , Data.Heap.Leftist.WeightBiased
-                        , Data.SplayTree
+                        , Data.SplayHeap
 
 executable              purelyFunc
     default-language:   Haskell2010
